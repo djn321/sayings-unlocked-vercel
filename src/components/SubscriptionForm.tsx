@@ -3,6 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { z } from "zod";
+
+const emailSchema = z.object({
+  email: z.string().email({ message: "Please enter a valid email address" }).max(255),
+});
 
 export const SubscriptionForm = () => {
   const [email, setEmail] = useState("");
@@ -13,15 +19,50 @@ export const SubscriptionForm = () => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Simulate API call - will need Supabase integration for real functionality
-    setTimeout(() => {
+    try {
+      // Validate email
+      const validation = emailSchema.safeParse({ email: email.trim() });
+      if (!validation.success) {
+        toast({
+          title: "Invalid email",
+          description: validation.error.errors[0].message,
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // Save to database
+      const { error } = await supabase
+        .from("subscribers")
+        .insert({ email: validation.data.email });
+
+      if (error) {
+        if (error.code === "23505") {
+          toast({
+            title: "Already subscribed",
+            description: "This email is already on our list!",
+          });
+        } else {
+          throw error;
+        }
+      } else {
+        toast({
+          title: "Thank you for subscribing!",
+          description: "You'll receive your first etymology email tomorrow morning.",
+        });
+        setEmail("");
+      }
+    } catch (error) {
+      console.error("Subscription error:", error);
       toast({
-        title: "Thank you for subscribing!",
-        description: "You'll receive your first etymology email tomorrow morning.",
+        title: "Something went wrong",
+        description: "Please try again later.",
+        variant: "destructive",
       });
-      setEmail("");
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   return (
