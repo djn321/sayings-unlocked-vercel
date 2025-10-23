@@ -173,6 +173,18 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Verify CRON_SECRET to prevent unauthorized access
+  const authHeader = req.headers.get('authorization');
+  const expectedSecret = Deno.env.get('CRON_SECRET');
+  
+  if (!authHeader || authHeader !== `Bearer ${expectedSecret}`) {
+    console.error('Unauthorized access attempt');
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
   try {
     console.log('Starting daily etymology email send...');
 
