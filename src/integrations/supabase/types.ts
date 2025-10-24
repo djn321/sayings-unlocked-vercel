@@ -14,6 +14,24 @@ export type Database = {
   }
   public: {
     Tables: {
+      cron_secrets: {
+        Row: {
+          created_at: string | null
+          key: string
+          value: string
+        }
+        Insert: {
+          created_at?: string | null
+          key: string
+          value: string
+        }
+        Update: {
+          created_at?: string | null
+          key?: string
+          value?: string
+        }
+        Relationships: []
+      }
       subscribers: {
         Row: {
           email: string
@@ -43,7 +61,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_cron_secret: { Args: never; Returns: string }
     }
     Enums: {
       [_ in never]: never
