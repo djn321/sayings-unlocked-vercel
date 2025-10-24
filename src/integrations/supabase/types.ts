@@ -34,6 +34,8 @@ export type Database = {
       }
       subscribers: {
         Row: {
+          confirmation_token: string | null
+          confirmed_at: string | null
           email: string
           id: string
           is_active: boolean
@@ -41,6 +43,8 @@ export type Database = {
           subscribed_at: string
         }
         Insert: {
+          confirmation_token?: string | null
+          confirmed_at?: string | null
           email: string
           id?: string
           is_active?: boolean
@@ -48,6 +52,8 @@ export type Database = {
           subscribed_at?: string
         }
         Update: {
+          confirmation_token?: string | null
+          confirmed_at?: string | null
           email?: string
           id?: string
           is_active?: boolean

@@ -33,9 +33,11 @@ export const SubscriptionForm = () => {
       }
 
       // Save to database
-      const { error } = await supabase
+      const { data: newSubscriber, error } = await supabase
         .from("subscribers")
-        .insert({ email: validation.data.email });
+        .insert({ email: validation.data.email })
+        .select()
+        .single();
 
       if (error) {
         if (error.code === "23505") {
@@ -47,10 +49,30 @@ export const SubscriptionForm = () => {
           throw error;
         }
       } else {
-        toast({
-          title: "Thank you for subscribing!",
-          description: "You'll receive your first etymology email tomorrow morning.",
-        });
+        // Send confirmation email
+        const { error: emailError } = await supabase.functions.invoke(
+          "send-confirmation-email",
+          {
+            body: {
+              email: validation.data.email,
+              token: newSubscriber.confirmation_token,
+            },
+          }
+        );
+
+        if (emailError) {
+          console.error("Failed to send confirmation email:", emailError);
+          toast({
+            title: "Subscription saved",
+            description: "However, we couldn't send the confirmation email. Please contact support.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Check your email!",
+            description: "We've sent you a confirmation link. Please check your inbox to complete your subscription.",
+          });
+        }
         setEmail("");
       }
     } catch (error) {
