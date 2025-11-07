@@ -202,9 +202,44 @@ Deno.serve(async (req) => {
 
     console.log(`Found ${subscribers.length} active subscribers`);
 
-    // Get random etymology for today
-    const etymology = getRandomEtymology();
-    console.log(`Selected etymology: "${etymology.saying}"`);
+    // Get the current cycle number
+    const { data: cycleData } = await supabase.rpc('get_current_etymology_cycle');
+    const currentCycle = cycleData || 1;
+
+    // Get all etymologies that have been sent in the current cycle
+    const { data: sentEtymologies } = await supabase
+      .from('etymology_sends')
+      .select('etymology_saying')
+      .eq('cycle_number', currentCycle);
+
+    const sentSayings = sentEtymologies?.map(e => e.etymology_saying) || [];
+    
+    // Filter out already sent etymologies
+    const availableEtymologies = etymologies.filter(
+      e => !sentSayings.includes(e.saying)
+    );
+
+    let etymology: Etymology;
+    let newCycle = currentCycle;
+
+    // If all etymologies have been sent, start a new cycle
+    if (availableEtymologies.length === 0) {
+      newCycle = currentCycle + 1;
+      etymology = etymologies[0]; // Start with first etymology in new cycle
+      console.log(`Starting new cycle ${newCycle}, selected: "${etymology.saying}"`);
+    } else {
+      // Pick the first available etymology (ordered rotation)
+      etymology = availableEtymologies[0];
+      console.log(`Cycle ${currentCycle}, selected: "${etymology.saying}"`);
+    }
+
+    // Record this etymology as sent
+    await supabase
+      .from('etymology_sends')
+      .insert({
+        etymology_saying: etymology.saying,
+        cycle_number: newCycle
+      });
 
     // Send emails to all subscribers
     const emailPromises = subscribers.map(async (subscriber) => {
