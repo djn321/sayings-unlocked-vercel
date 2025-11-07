@@ -13,44 +13,62 @@ interface Etymology {
   era: string;
 }
 
-const etymologies: Etymology[] = [
-  {
-    saying: "Spill the beans",
-    origin: "In ancient Greece, black and white beans were used for voting. Black beans meant 'no' and white beans meant 'yes.' If someone accidentally spilled the beans before voting was complete, they would reveal the outcome prematurely.",
-    meaning: "To reveal a secret or disclose information that was meant to be kept private.",
-    era: "Ancient Greece"
-  },
-  {
-    saying: "Bite the bullet",
-    origin: "Before anesthesia, patients undergoing surgery would bite on a bullet or leather strap to help them endure the pain. This practice was especially common during wartime when medical supplies were scarce.",
-    meaning: "To endure a painful or difficult situation with courage and determination.",
-    era: "19th Century"
-  },
-  {
-    saying: "Cat's out of the bag",
-    origin: "In medieval markets, unscrupulous merchants would sometimes sell customers a cat in a bag, claiming it was a pig. When the buyer opened the bag at home, the cat would escape, revealing the deception.",
-    meaning: "A secret has been revealed, often accidentally or prematurely.",
-    era: "Medieval Times"
-  },
-  {
-    saying: "Break the ice",
-    origin: "In the days before modern icebreakers, small ships had to break through frozen waters to allow larger ships to pass. The first ship to venture through was 'breaking the ice' for others to follow.",
-    meaning: "To initiate conversation or ease tension in a social situation.",
-    era: "16th Century"
-  },
-  {
-    saying: "Turn a blind eye",
-    origin: "Admiral Horatio Nelson, who was blind in one eye, allegedly held his telescope to his blind eye during the Battle of Copenhagen when his superior signaled him to withdraw, claiming he couldn't see the signal.",
-    meaning: "To deliberately ignore something wrong or unpleasant.",
-    era: "1801"
+async function generateEtymology(recentSayings: string[]): Promise<Etymology> {
+  const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+  
+  const recentList = recentSayings.length > 0 
+    ? `\n\nDo NOT use any of these recently used sayings: ${recentSayings.join(', ')}`
+    : '';
+  
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${lovableApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'google/gemini-2.5-flash',
+      messages: [
+        {
+          role: 'user',
+          content: `Generate a fascinating etymology for a common English saying or phrase. 
+          
+Requirements:
+- Choose a well-known saying or idiom that people use regularly
+- The origin story should be historically accurate and interesting
+- Include the time period or era when it originated
+- Explain what the saying means in modern usage
+${recentList}
+
+Return ONLY valid JSON in this exact format (no markdown, no code blocks):
+{
+  "saying": "the exact saying or phrase",
+  "origin": "detailed historical origin story (2-3 sentences)",
+  "meaning": "modern meaning and usage (1-2 sentences)",
+  "era": "time period (e.g., '16th Century', 'Ancient Rome', '1800s')"
+}`
+        }
+      ],
+      temperature: 0.9,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`AI request failed: ${response.status}`);
   }
-];
+
+  const data = await response.json();
+  const content = data.choices[0].message.content;
+  
+  // Remove markdown code blocks if present
+  const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  const etymology = JSON.parse(cleanContent);
+  
+  console.log('Generated etymology:', etymology.saying);
+  return etymology;
+}
 
 const resend = new Resend(Deno.env.get('RESEND_API_KEY') as string);
-
-function getRandomEtymology(): Etymology {
-  return etymologies[Math.floor(Math.random() * etymologies.length)];
-}
 
 function createEmailHtml(etymology: Etymology): string {
   return `
@@ -202,43 +220,32 @@ Deno.serve(async (req) => {
 
     console.log(`Found ${subscribers.length} active subscribers`);
 
+    // Get recently sent sayings (last 30 days) to avoid duplicates
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const { data: recentSends } = await supabase
+      .from('etymology_sends')
+      .select('etymology_saying')
+      .gte('sent_at', thirtyDaysAgo.toISOString())
+      .order('sent_at', { ascending: false });
+
+    const recentSayings = recentSends?.map(e => e.etymology_saying) || [];
+    
+    // Generate a new etymology using AI
+    console.log('Generating new etymology with AI...');
+    const etymology = await generateEtymology(recentSayings);
+
     // Get the current cycle number
     const { data: cycleData } = await supabase.rpc('get_current_etymology_cycle');
     const currentCycle = cycleData || 1;
-
-    // Get all etymologies that have been sent in the current cycle
-    const { data: sentEtymologies } = await supabase
-      .from('etymology_sends')
-      .select('etymology_saying')
-      .eq('cycle_number', currentCycle);
-
-    const sentSayings = sentEtymologies?.map(e => e.etymology_saying) || [];
-    
-    // Filter out already sent etymologies
-    const availableEtymologies = etymologies.filter(
-      e => !sentSayings.includes(e.saying)
-    );
-
-    let etymology: Etymology;
-    let newCycle = currentCycle;
-
-    // If all etymologies have been sent, start a new cycle
-    if (availableEtymologies.length === 0) {
-      newCycle = currentCycle + 1;
-      etymology = etymologies[0]; // Start with first etymology in new cycle
-      console.log(`Starting new cycle ${newCycle}, selected: "${etymology.saying}"`);
-    } else {
-      // Pick the first available etymology (ordered rotation)
-      etymology = availableEtymologies[0];
-      console.log(`Cycle ${currentCycle}, selected: "${etymology.saying}"`);
-    }
 
     // Record this etymology as sent
     await supabase
       .from('etymology_sends')
       .insert({
         etymology_saying: etymology.saying,
-        cycle_number: newCycle
+        cycle_number: currentCycle
       });
 
     // Send emails to all subscribers
