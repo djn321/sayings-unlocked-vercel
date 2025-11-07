@@ -32,6 +32,27 @@ export type Database = {
         }
         Relationships: []
       }
+      etymology_sends: {
+        Row: {
+          cycle_number: number
+          etymology_saying: string
+          id: string
+          sent_at: string
+        }
+        Insert: {
+          cycle_number?: number
+          etymology_saying: string
+          id?: string
+          sent_at?: string
+        }
+        Update: {
+          cycle_number?: number
+          etymology_saying?: string
+          id?: string
+          sent_at?: string
+        }
+        Relationships: []
+      }
       subscribers: {
         Row: {
           confirmation_token: string | null
@@ -68,6 +89,7 @@ export type Database = {
     }
     Functions: {
       get_cron_secret: { Args: never; Returns: string }
+      get_current_etymology_cycle: { Args: never; Returns: number }
     }
     Enums: {
       [_ in never]: never
