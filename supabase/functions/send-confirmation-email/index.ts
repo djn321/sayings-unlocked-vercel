@@ -32,7 +32,11 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    const confirmationUrl = `${Deno.env.get("SUPABASE_URL")?.replace('.supabase.co', '.lovable.app')}/confirm?token=${token}`;
+    // Get the origin from the request or use the Supabase project URL converted to lovable.app
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    const projectId = supabaseUrl.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1] || "";
+    const frontendUrl = `https://${projectId}.lovable.app`;
+    const confirmationUrl = `${frontendUrl}/confirm?token=${token}`;
 
     const emailResponse = await resend.emails.send({
       from: "Etymology Daily <onboarding@resend.dev>",
