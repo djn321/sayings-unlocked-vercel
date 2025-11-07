@@ -12,10 +12,22 @@ export default function Admin() {
     setIsLoading(true);
 
     try {
+      // Get the CRON_SECRET from the database
+      const { data: secretData, error: secretError } = await supabase
+        .rpc('get_cron_secret');
+
+      if (secretError) {
+        throw new Error('Failed to get cron secret: ' + secretError.message);
+      }
+
+      // Call the function with the CRON_SECRET in Authorization header
       const { data, error } = await supabase.functions.invoke(
         "send-daily-etymology",
         {
           body: {},
+          headers: {
+            Authorization: `Bearer ${secretData}`,
+          },
         }
       );
 
@@ -25,13 +37,13 @@ export default function Admin() {
 
       toast({
         title: "Success!",
-        description: `Daily etymology email sent to ${data.success} subscribers. Failed: ${data.failed}`,
+        description: `Daily etymology email sent to ${data.success} subscribers. Failed: ${data.failed}. Total: ${data.total}`,
       });
     } catch (error) {
       console.error("Failed to send daily email:", error);
       toast({
         title: "Error",
-        description: "Failed to send daily etymology email. Check console for details.",
+        description: error instanceof Error ? error.message : "Failed to send daily etymology email",
         variant: "destructive",
       });
     } finally {
