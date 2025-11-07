@@ -12,22 +12,11 @@ export default function Admin() {
     setIsLoading(true);
 
     try {
-      // Get the CRON_SECRET from the database
-      const { data: secretData, error: secretError } = await supabase
-        .rpc('get_cron_secret');
-
-      if (secretError) {
-        throw new Error('Failed to get cron secret: ' + secretError.message);
-      }
-
-      // Call the function with the CRON_SECRET in Authorization header
+      // Call the send-daily-etymology function
       const { data, error } = await supabase.functions.invoke(
         "send-daily-etymology",
         {
           body: {},
-          headers: {
-            Authorization: `Bearer ${secretData}`,
-          },
         }
       );
 
