@@ -13,11 +13,17 @@ interface Etymology {
   era: string;
 }
 
-async function generateEtymology(recentSayings: string[]): Promise<Etymology> {
+async function generateEtymology(recentSayings: string[], feedbackData: { liked: string[], disliked: string[] }): Promise<Etymology> {
   const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
   
   const recentList = recentSayings.length > 0 
     ? `\n\nDo NOT use any of these recently used sayings: ${recentSayings.join(', ')}`
+    : '';
+  
+  const feedbackContext = feedbackData.liked.length > 0 || feedbackData.disliked.length > 0
+    ? `\n\nBased on subscriber feedback:
+${feedbackData.liked.length > 0 ? `- These sayings were LIKED (generate more like these): ${feedbackData.liked.join(', ')}` : ''}
+${feedbackData.disliked.length > 0 ? `- These sayings were DISLIKED (avoid similar ones): ${feedbackData.disliked.join(', ')}` : ''}`
     : '';
   
   const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -38,7 +44,7 @@ Requirements:
 - The origin story should be historically accurate and interesting
 - Include the time period or era when it originated
 - Explain what the saying means in modern usage
-${recentList}
+${recentList}${feedbackContext}
 
 Return ONLY valid JSON in this exact format (no markdown, no code blocks):
 {
@@ -70,7 +76,10 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
 
 const resend = new Resend(Deno.env.get('RESEND_API_KEY') as string);
 
-function createEmailHtml(etymology: Etymology): string {
+function createEmailHtml(etymology: Etymology, subscriberId: string): string {
+  const feedbackUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/record-etymology-feedback`;
+  const likeUrl = `${feedbackUrl}?subscriber_id=${subscriberId}&saying=${encodeURIComponent(etymology.saying)}&feedback=like`;
+  const dislikeUrl = `${feedbackUrl}?subscriber_id=${subscriberId}&saying=${encodeURIComponent(etymology.saying)}&feedback=dislike`;
   return `
     <!DOCTYPE html>
     <html>
@@ -152,6 +161,46 @@ function createEmailHtml(etymology: Etymology): string {
             color: #d97706;
             text-decoration: none;
           }
+          .feedback-section {
+            text-align: center;
+            padding: 24px;
+            background: #fafaf9;
+            border-top: 1px solid #e7e5e4;
+          }
+          .feedback-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #44403c;
+            margin-bottom: 12px;
+          }
+          .feedback-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+          }
+          .feedback-button {
+            display: inline-block;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.2s;
+          }
+          .feedback-button.like {
+            background: #22c55e;
+            color: white;
+          }
+          .feedback-button.like:hover {
+            background: #16a34a;
+          }
+          .feedback-button.dislike {
+            background: #ef4444;
+            color: white;
+          }
+          .feedback-button.dislike:hover {
+            background: #dc2626;
+          }
         </style>
       </head>
       <body>
@@ -173,6 +222,13 @@ function createEmailHtml(etymology: Etymology): string {
             <div class="section">
               <div class="section-title">Modern Meaning</div>
               <div class="section-content">${etymology.meaning}</div>
+            </div>
+          </div>
+          <div class="feedback-section">
+            <div class="feedback-title">Did you enjoy today's etymology?</div>
+            <div class="feedback-buttons">
+              <a href="${likeUrl}" class="feedback-button like">👍 I liked it</a>
+              <a href="${dislikeUrl}" class="feedback-button dislike">👎 Not my favorite</a>
             </div>
           </div>
           <div class="footer">
@@ -232,9 +288,20 @@ Deno.serve(async (req) => {
 
     const recentSayings = recentSends?.map(e => e.etymology_saying) || [];
     
+    // Get feedback data from the last 30 days
+    const { data: feedbackData } = await supabase
+      .from('etymology_feedback')
+      .select('etymology_saying, feedback_type')
+      .gte('created_at', thirtyDaysAgo.toISOString());
+
+    const liked = feedbackData?.filter(f => f.feedback_type === 'like').map(f => f.etymology_saying) || [];
+    const disliked = feedbackData?.filter(f => f.feedback_type === 'dislike').map(f => f.etymology_saying) || [];
+    
+    console.log(`Feedback context: ${liked.length} liked, ${disliked.length} disliked`);
+    
     // Generate a new etymology using AI
     console.log('Generating new etymology with AI...');
-    const etymology = await generateEtymology(recentSayings);
+    const etymology = await generateEtymology(recentSayings, { liked, disliked });
 
     // Get the current cycle number
     const { data: cycleData } = await supabase.rpc('get_current_etymology_cycle');
@@ -255,7 +322,7 @@ Deno.serve(async (req) => {
           from: 'Etymology Daily <onboarding@resend.dev>',
           to: [subscriber.email],
           subject: `📚 Today's Etymology: "${etymology.saying}"`,
-          html: createEmailHtml(etymology),
+          html: createEmailHtml(etymology, subscriber.id),
         });
 
         if (emailError) {

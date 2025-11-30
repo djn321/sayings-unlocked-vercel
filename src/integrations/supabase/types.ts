@@ -32,6 +32,38 @@ export type Database = {
         }
         Relationships: []
       }
+      etymology_feedback: {
+        Row: {
+          created_at: string
+          etymology_saying: string
+          feedback_type: string
+          id: string
+          subscriber_id: string
+        }
+        Insert: {
+          created_at?: string
+          etymology_saying: string
+          feedback_type: string
+          id?: string
+          subscriber_id: string
+        }
+        Update: {
+          created_at?: string
+          etymology_saying?: string
+          feedback_type?: string
+          id?: string
+          subscriber_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "etymology_feedback_subscriber_id_fkey"
+            columns: ["subscriber_id"]
+            isOneToOne: false
+            referencedRelation: "subscribers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       etymology_sends: {
         Row: {
           cycle_number: number

@@ -3,6 +3,9 @@ project_id = "fviryuzkiolzixezvnvq"
 [functions.send-daily-etymology]
 verify_jwt = false
 
+[functions.record-etymology-feedback]
+verify_jwt = false
+
 [functions.send-confirmation-email]
 verify_jwt = false
 
