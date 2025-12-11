@@ -1,12 +1,52 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useAdminAuth } from "@/hooks/useAdminAuth";
 
 export default function Admin() {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const { user, isAdmin, isLoading: authLoading, signOut } = useAdminAuth();
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate("/auth");
+    }
+  }, [authLoading, user, navigate]);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-background to-accent/5 flex items-center justify-center">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-background to-accent/5 py-12 px-4">
+        <div className="max-w-2xl mx-auto space-y-8">
+          <Card className="p-6 text-center">
+            <h1 className="text-2xl font-bold text-destructive mb-4">Access Denied</h1>
+            <p className="text-muted-foreground mb-6">
+              You don't have admin privileges to access this page.
+            </p>
+            <Button onClick={signOut} variant="outline">
+              Sign Out
+            </Button>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   const handleSendDailyEmail = async () => {
     setIsLoading(true);
@@ -49,7 +89,17 @@ export default function Admin() {
         </div>
 
         <Card className="p-6">
-          <h2 className="text-2xl font-bold mb-4">Send Daily Email</h2>
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-2xl font-bold">Send Daily Email</h2>
+              <p className="text-muted-foreground">
+                Logged in as {user.email}
+              </p>
+            </div>
+            <Button onClick={signOut} variant="outline" size="sm">
+              Sign Out
+            </Button>
+          </div>
           <p className="text-muted-foreground mb-6">
             Manually trigger the daily etymology email to all active subscribers.
           </p>
