@@ -77,61 +77,16 @@ Deno.serve(async (req) => {
       console.log(`Recorded ${feedbackType} feedback for subscriber ${subscriberId}`);
     }
 
-    // Return a nice thank you page
-    const thankYouHtml = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-              background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              min-height: 100vh;
-              margin: 0;
-              padding: 20px;
-            }
-            .container {
-              background: white;
-              border-radius: 12px;
-              padding: 48px 32px;
-              text-align: center;
-              box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-              max-width: 500px;
-            }
-            h1 {
-              color: #d97706;
-              font-size: 32px;
-              margin-bottom: 16px;
-            }
-            p {
-              color: #44403c;
-              font-size: 18px;
-              line-height: 1.6;
-            }
-            .emoji {
-              font-size: 64px;
-              margin-bottom: 24px;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="emoji">${feedbackType === 'like' ? '👍' : '👎'}</div>
-            <h1>Thank you for your feedback!</h1>
-            <p>Your feedback helps us improve the etymologies we send you.</p>
-          </div>
-        </body>
-      </html>
-    `;
-
-    return new Response(thankYouHtml, {
-      status: 200,
-      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    // Redirect to the thank you page on the main website
+    const siteUrl = Deno.env.get('SITE_URL') || 'https://fviryuzkiolzixezvnvq.lovable.app';
+    const redirectUrl = `${siteUrl}/feedback?type=${feedbackType}`;
+    
+    return new Response(null, {
+      status: 302,
+      headers: {
+        ...corsHeaders,
+        'Location': redirectUrl,
+      },
     });
   } catch (error: any) {
     console.error('Error in record-etymology-feedback function:', error);
