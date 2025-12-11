@@ -130,7 +130,8 @@ Deno.serve(async (req) => {
     `;
 
     return new Response(thankYouHtml, {
-      headers: { ...corsHeaders, 'Content-Type': 'text/html' },
+      status: 200,
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
     });
   } catch (error: any) {
     console.error('Error in record-etymology-feedback function:', error);
