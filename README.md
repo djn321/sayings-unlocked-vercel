@@ -1,73 +1,211 @@
-# Welcome to your Lovable project
+# Etymology Daily - Sayings Unlocked
 
-## Project info
+Daily etymology lessons exploring the fascinating origins of common sayings and phrases. Users subscribe via email to receive AI-generated etymologies with historical context.
 
-**URL**: https://lovable.dev/projects/6c208a75-08b1-4cf7-809d-0f578c679af6
+## Tech Stack
 
-## How can I edit this code?
+- **Frontend**: React + Vite + TypeScript
+- **UI**: shadcn/ui + Tailwind CSS
+- **Backend**: Supabase (database, auth, edge functions)
+- **AI**: Anthropic Claude 3.5 Sonnet
+- **Email**: Resend
+- **Hosting**: Vercel
 
-There are several ways of editing your application.
+## Features
 
-**Use Lovable**
+- Email subscription management
+- Daily AI-generated etymology emails
+- User feedback system (like/dislike)
+- Admin panel for manual email triggers
+- Feedback-based content improvement
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/6c208a75-08b1-4cf7-809d-0f578c679af6) and start prompting.
+## Local Development
 
-Changes made via Lovable will be committed automatically to this repo.
+### Prerequisites
 
-**Use your preferred IDE**
+- Node.js 18+ or Bun
+- Supabase account
+- Anthropic API key
+- Resend API key
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### Setup
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+1. Clone the repository:
+```bash
+git clone <your-repo-url>
+cd sayings-unlocked
 ```
 
-**Edit a file directly in GitHub**
+2. Install dependencies:
+```bash
+npm install
+# or
+bun install
+```
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+3. Copy `.env.example` to `.env` and fill in your credentials:
+```bash
+cp .env.example .env
+```
 
-**Use GitHub Codespaces**
+4. Start the development server:
+```bash
+npm run dev
+# or
+bun run dev
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+The app will be available at `http://localhost:8080`.
 
-## What technologies are used for this project?
+## Environment Variables
 
-This project is built with:
+### Frontend (.env)
+- `VITE_SUPABASE_PROJECT_ID` - Your Supabase project ID
+- `VITE_SUPABASE_PUBLISHABLE_KEY` - Supabase anon/public key
+- `VITE_SUPABASE_URL` - Your Supabase project URL
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+### Supabase Edge Functions
+Set these in the Supabase dashboard under Settings > Edge Functions > Secrets:
 
-## How can I deploy this project?
+- `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (for database operations)
+- `ANTHROPIC_API_KEY` - Anthropic API key for Claude
+- `RESEND_API_KEY` - Resend API key for sending emails
+- `SUPABASE_URL` - Your Supabase project URL (for feedback links)
 
-Simply open [Lovable](https://lovable.dev/projects/6c208a75-08b1-4cf7-809d-0f578c679af6) and click on Share -> Publish.
+## Deployment
 
-## Can I connect a custom domain to my Lovable project?
+### Vercel Deployment
 
-Yes, you can!
+1. Push your code to GitHub
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+2. Import the repository in Vercel:
+   - Go to [vercel.com](https://vercel.com)
+   - Click "Add New" > "Project"
+   - Select your GitHub repository
+   - Configure environment variables (VITE_* variables from .env)
+   - Deploy
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+3. Vercel will automatically:
+   - Detect Vite configuration
+   - Build the project
+   - Deploy to a production URL
+   - Set up automatic deployments on git push
+
+### Supabase Edge Functions
+
+To deploy the edge functions to Supabase:
+
+```bash
+# Install Supabase CLI
+npm install -g supabase
+
+# Login to Supabase
+supabase login
+
+# Link to your project
+supabase link --project-ref your-project-id
+
+# Deploy functions
+supabase functions deploy send-daily-etymology
+supabase functions deploy record-etymology-feedback
+supabase functions deploy send-confirmation-email
+supabase functions deploy confirm-subscription
+
+# Set environment variables in Supabase dashboard
+# Settings > Edge Functions > Secrets
+```
+
+## API Keys Setup
+
+### Anthropic API Key
+1. Sign up at [console.anthropic.com](https://console.anthropic.com)
+2. Go to Settings > API Keys
+3. Create a new API key
+4. Add to Supabase edge function secrets as `ANTHROPIC_API_KEY`
+
+### Resend API Key
+1. Sign up at [resend.com](https://resend.com)
+2. Go to API Keys
+3. Create a new API key
+4. Add to Supabase edge function secrets as `RESEND_API_KEY`
+5. Verify your domain in Resend to send from your own domain
+
+## Database Schema
+
+The Supabase database includes:
+- `subscribers` - Email subscribers and their status
+- `etymology_sends` - History of sent etymologies
+- `etymology_feedback` - User feedback (likes/dislikes)
+
+Migrations are in `supabase/migrations/`.
+
+## Admin Access
+
+To grant admin access to a user:
+1. Sign up through the app at `/auth`
+2. In Supabase dashboard, add an entry to the admin table with the user's ID
+
+## Scripts
+
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run preview` - Preview production build
+- `npm run lint` - Run ESLint
+
+## Project Structure
+
+```
+src/
+├── components/     # React components
+├── pages/          # Page components (routes)
+├── hooks/          # Custom React hooks
+├── integrations/   # Third-party integrations (Supabase)
+└── lib/            # Utility functions
+
+supabase/
+├── functions/      # Edge functions
+└── migrations/     # Database migrations
+```
+
+## Scheduled Email Sending
+
+Set up a cron job to trigger the send-daily-etymology function daily:
+
+1. In Supabase dashboard, go to Database > Cron Jobs
+2. Create a new cron job:
+```sql
+SELECT cron.schedule(
+  'send-daily-etymology',
+  '0 9 * * *',  -- 9 AM daily
+  $$
+  SELECT net.http_post(
+    url := 'https://your-project-id.supabase.co/functions/v1/send-daily-etymology',
+    headers := '{"Authorization": "Bearer YOUR_ANON_KEY"}'::jsonb
+  );
+  $$
+);
+```
+
+Or use an external service like:
+- GitHub Actions (free)
+- EasyCron
+- cron-job.org
+
+## Cost Estimates
+
+Based on 1000 subscribers:
+- **Vercel**: Free (within limits)
+- **Supabase**: Free tier covers most small projects
+- **Anthropic API**: ~$3-5/month (1 etymology per day)
+- **Resend**: Free tier covers 3000 emails/month
+
+## Contributing
+
+1. Create a feature branch
+2. Make your changes
+3. Test locally
+4. Create a pull request
+
+## License
+
+Private project
