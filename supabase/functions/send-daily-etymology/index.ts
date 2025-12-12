@@ -14,31 +14,33 @@ interface Etymology {
 }
 
 async function generateEtymology(recentSayings: string[], feedbackData: { liked: string[], disliked: string[] }): Promise<Etymology> {
-  const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
-  
-  const recentList = recentSayings.length > 0 
+  const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
+
+  const recentList = recentSayings.length > 0
     ? `\n\nDo NOT use any of these recently used sayings: ${recentSayings.join(', ')}`
     : '';
-  
+
   const feedbackContext = feedbackData.liked.length > 0 || feedbackData.disliked.length > 0
     ? `\n\nBased on subscriber feedback:
 ${feedbackData.liked.length > 0 ? `- These sayings were LIKED (generate more like these): ${feedbackData.liked.join(', ')}` : ''}
 ${feedbackData.disliked.length > 0 ? `- These sayings were DISLIKED (avoid similar ones): ${feedbackData.disliked.join(', ')}` : ''}`
     : '';
-  
-  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${lovableApiKey}`,
+      'x-api-key': anthropicApiKey!,
+      'anthropic-version': '2023-06-01',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'google/gemini-2.5-flash',
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 1024,
       messages: [
         {
           role: 'user',
-          content: `Generate a fascinating etymology for a common English saying or phrase. 
-          
+          content: `Generate a fascinating etymology for a common English saying or phrase.
+
 Requirements:
 - Choose a well-known saying or idiom that people use regularly
 - The origin story should be historically accurate and interesting
@@ -55,21 +57,22 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
 }`
         }
       ],
-      temperature: 0.9,
+      temperature: 1.0,
     }),
   });
 
   if (!response.ok) {
-    throw new Error(`AI request failed: ${response.status}`);
+    const errorText = await response.text();
+    throw new Error(`Anthropic API request failed: ${response.status} - ${errorText}`);
   }
 
   const data = await response.json();
-  const content = data.choices[0].message.content;
-  
+  const content = data.content[0].text;
+
   // Remove markdown code blocks if present
   const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
   const etymology = JSON.parse(cleanContent);
-  
+
   console.log('Generated etymology:', etymology.saying);
   return etymology;
 }
