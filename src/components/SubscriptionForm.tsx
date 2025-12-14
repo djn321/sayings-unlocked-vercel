@@ -40,14 +40,21 @@ export const SubscriptionForm = () => {
         .single();
 
       if (error) {
+        console.error("Database insert error:", error);
         if (error.code === "23505") {
           toast({
             title: "Already subscribed",
             description: "This email is already on our list!",
           });
         } else {
-          throw error;
+          toast({
+            title: "Database error",
+            description: `Error code: ${error.code || 'unknown'}. Message: ${error.message || 'No message'}`,
+            variant: "destructive",
+          });
         }
+        setIsLoading(false);
+        return;
       } else {
         // Send confirmation email
         const { error: emailError } = await supabase.functions.invoke(
@@ -77,7 +84,7 @@ export const SubscriptionForm = () => {
       }
     } catch (error) {
       console.error("Subscription error:", error);
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
       toast({
         title: "Something went wrong",
         description: `Error: ${errorMessage}. Please try again later.`,
