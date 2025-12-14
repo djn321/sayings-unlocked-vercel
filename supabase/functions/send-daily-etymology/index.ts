@@ -14,7 +14,7 @@ interface Etymology {
 }
 
 async function generateEtymology(recentSayings: string[], feedbackData: { liked: string[], disliked: string[] }): Promise<Etymology> {
-  const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
+  const geminiApiKey = Deno.env.get('GOOGLE_AI_API_KEY');
 
   const recentList = recentSayings.length > 0
     ? `\n\nDo NOT use any of these recently used sayings: ${recentSayings.join(', ')}`
@@ -26,20 +26,7 @@ ${feedbackData.liked.length > 0 ? `- These sayings were LIKED (generate more lik
 ${feedbackData.disliked.length > 0 ? `- These sayings were DISLIKED (avoid similar ones): ${feedbackData.disliked.join(', ')}` : ''}`
     : '';
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': anthropicApiKey!,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 1024,
-      messages: [
-        {
-          role: 'user',
-          content: `Generate a fascinating etymology for a common English saying or phrase.
+  const prompt = `Generate a fascinating etymology for a common English saying or phrase.
 
 Requirements:
 - Choose a well-known saying or idiom that people use regularly
@@ -54,20 +41,33 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
   "origin": "detailed historical origin story (2-3 sentences)",
   "meaning": "modern meaning and usage (1-2 sentences)",
   "era": "time period (e.g., '16th Century', 'Ancient Rome', '1800s')"
-}`
-        }
-      ],
-      temperature: 1.0,
+}`;
+
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      contents: [{
+        parts: [{
+          text: prompt
+        }]
+      }],
+      generationConfig: {
+        temperature: 1.0,
+        maxOutputTokens: 1024,
+      }
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Anthropic API request failed: ${response.status} - ${errorText}`);
+    throw new Error(`Google AI API request failed: ${response.status} - ${errorText}`);
   }
 
   const data = await response.json();
-  const content = data.content[0].text;
+  const content = data.candidates[0].content.parts[0].text;
 
   // Remove markdown code blocks if present
   const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
