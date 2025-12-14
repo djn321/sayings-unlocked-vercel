@@ -3,8 +3,13 @@ import { Resend } from "npm:resend@2.0.0";
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
+const siteUrl = Deno.env.get('SITE_URL');
+if (!siteUrl) {
+  throw new Error('SITE_URL environment variable must be configured');
+}
+
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "https://sayings-unlocked.vercel.app",
+  "Access-Control-Allow-Origin": siteUrl,
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
@@ -32,8 +37,11 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Use the Vercel frontend URL for confirmation links
-    const frontendUrl = "https://sayings-unlocked.vercel.app";
+    // Get frontend URL from environment variable
+    const frontendUrl = Deno.env.get('SITE_URL');
+    if (!frontendUrl) {
+      throw new Error('SITE_URL environment variable not configured');
+    }
     const confirmationUrl = `${frontendUrl}/confirm?token=${token}`;
 
     const emailResponse = await resend.emails.send({
@@ -125,10 +133,11 @@ const handler = async (req: Request): Promise<Response> => {
         ...corsHeaders,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error in send-confirmation-email function:", error);
+    // Don't leak internal error details to users
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: "An internal error occurred while sending confirmation email" }),
       {
         status: 500,
         headers: { "Content-Type": "application/json", ...corsHeaders },

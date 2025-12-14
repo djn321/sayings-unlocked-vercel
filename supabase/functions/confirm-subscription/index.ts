@@ -1,8 +1,13 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.76.1";
 
+const siteUrl = Deno.env.get('SITE_URL');
+if (!siteUrl) {
+  throw new Error('SITE_URL environment variable must be configured');
+}
+
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "https://sayings-unlocked.vercel.app",
+  "Access-Control-Allow-Origin": siteUrl,
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
@@ -65,10 +70,11 @@ const handler = async (req: Request): Promise<Response> => {
         headers: { "Content-Type": "application/json", ...corsHeaders },
       }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error in confirm-subscription function:", error);
+    // Don't leak internal error details to users
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: "An internal error occurred during confirmation" }),
       {
         status: 500,
         headers: { "Content-Type": "application/json", ...corsHeaders },

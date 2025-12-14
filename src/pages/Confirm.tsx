@@ -36,7 +36,7 @@ export default function Confirm() {
           setStatus("success");
           setMessage(`Successfully confirmed subscription for ${data.email}`);
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error("Confirmation error:", error);
         setStatus("error");
         setMessage("Failed to confirm subscription. The link may be invalid or expired.");
