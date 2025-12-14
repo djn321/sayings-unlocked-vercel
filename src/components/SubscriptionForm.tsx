@@ -77,9 +77,10 @@ export const SubscriptionForm = () => {
       }
     } catch (error) {
       console.error("Subscription error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       toast({
         title: "Something went wrong",
-        description: "Please try again later.",
+        description: `Error: ${errorMessage}. Please try again later.`,
         variant: "destructive",
       });
     } finally {
