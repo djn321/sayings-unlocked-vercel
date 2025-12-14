@@ -1,6 +1,6 @@
- name: Deploy to Supabase
+name: Deploy to Supabase
 
-  on:
+on:
     push:
       branches:
         - main
@@ -9,7 +9,7 @@
         - 'supabase/migrations/**'
         - '.github/workflows/deploy-supabase.yml'
 
-  jobs:
+jobs:
     deploy:
       runs-on: ubuntu-latest
 
