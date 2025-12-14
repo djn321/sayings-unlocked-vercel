@@ -32,10 +32,8 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Get the origin from the request or use the Supabase project URL converted to lovable.app
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-    const projectId = supabaseUrl.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1] || "";
-    const frontendUrl = `https://${projectId}.lovable.app`;
+    // Use the Vercel frontend URL for confirmation links
+    const frontendUrl = "https://sayings-unlocked.vercel.app";
     const confirmationUrl = `${frontendUrl}/confirm?token=${token}`;
 
     const emailResponse = await resend.emails.send({
