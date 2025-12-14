@@ -7,7 +7,7 @@ Daily etymology lessons exploring the fascinating origins of common sayings and 
 - **Frontend**: React + Vite + TypeScript
 - **UI**: shadcn/ui + Tailwind CSS
 - **Backend**: Supabase (database, auth, edge functions)
-- **AI**: Anthropic Claude 3.5 Sonnet
+- **AI**: Google Gemini 1.5 Flash (free tier)
 - **Email**: Resend
 - **Hosting**: Vercel
 
@@ -25,7 +25,7 @@ Daily etymology lessons exploring the fascinating origins of common sayings and 
 
 - Node.js 18+ or Bun
 - Supabase account
-- Anthropic API key
+- Google AI API key (free)
 - Resend API key
 
 ### Setup
@@ -68,7 +68,7 @@ The app will be available at `http://localhost:8080`.
 Set these in the Supabase dashboard under Settings > Edge Functions > Secrets:
 
 - `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (for database operations)
-- `ANTHROPIC_API_KEY` - Anthropic API key for Claude
+- `GOOGLE_AI_API_KEY` - Google AI API key for Gemini (free tier)
 - `RESEND_API_KEY` - Resend API key for sending emails
 - `SUPABASE_URL` - Your Supabase project URL (for feedback links)
 
@@ -117,11 +117,12 @@ supabase functions deploy confirm-subscription
 
 ## API Keys Setup
 
-### Anthropic API Key
-1. Sign up at [console.anthropic.com](https://console.anthropic.com)
-2. Go to Settings > API Keys
-3. Create a new API key
-4. Add to Supabase edge function secrets as `ANTHROPIC_API_KEY`
+### Google AI API Key (Free)
+1. Go to [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+2. Sign in with your Google account
+3. Click "Create API Key"
+4. Copy the API key
+5. Add to Supabase edge function secrets as `GOOGLE_AI_API_KEY`
 
 ### Resend API Key
 1. Sign up at [resend.com](https://resend.com)
@@ -196,8 +197,10 @@ Or use an external service like:
 Based on 1000 subscribers:
 - **Vercel**: Free (within limits)
 - **Supabase**: Free tier covers most small projects
-- **Anthropic API**: ~$3-5/month (1 etymology per day)
+- **Google AI (Gemini)**: FREE (free tier covers 1,500 requests/day)
 - **Resend**: Free tier covers 3000 emails/month
+
+**Total cost: $0/month** (all services on free tier)
 
 ## Contributing
 
