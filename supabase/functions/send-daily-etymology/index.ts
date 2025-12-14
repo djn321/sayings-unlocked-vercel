@@ -1,8 +1,13 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import { Resend } from 'npm:resend@4.0.0';
 
+const siteUrl = Deno.env.get('SITE_URL');
+if (!siteUrl) {
+  throw new Error('SITE_URL environment variable must be configured');
+}
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': 'https://sayings-unlocked.vercel.app',
+  'Access-Control-Allow-Origin': siteUrl,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -79,10 +84,73 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
 
 const resend = new Resend(Deno.env.get('RESEND_API_KEY') as string);
 
-function createEmailHtml(etymology: Etymology, subscriberId: string): string {
+// Generate HMAC-signed token for feedback URLs
+async function generateFeedbackToken(subscriberId: string, saying: string): Promise<string> {
+  const secretKey = Deno.env.get('FEEDBACK_TOKEN_SECRET');
+  if (!secretKey) {
+    throw new Error('FEEDBACK_TOKEN_SECRET not configured');
+  }
+
+  const timestamp = Date.now().toString();
+  const message = `${subscriberId}.${timestamp}.${saying}`;
+
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(secretKey);
+  const messageData = encoder.encode(message);
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+  const signatureBase64 = btoa(String.fromCharCode(...new Uint8Array(signature)));
+
+  return `${subscriberId}.${timestamp}.${signatureBase64}`;
+}
+
+// Generate HMAC-signed token for unsubscribe URLs
+async function generateUnsubscribeToken(subscriberId: string): Promise<string> {
+  const secretKey = Deno.env.get('FEEDBACK_TOKEN_SECRET');
+  if (!secretKey) {
+    throw new Error('FEEDBACK_TOKEN_SECRET not configured');
+  }
+
+  const timestamp = Date.now().toString();
+  const message = `${subscriberId}.${timestamp}.unsubscribe`;
+
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(secretKey);
+  const messageData = encoder.encode(message);
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+  const signatureBase64 = btoa(String.fromCharCode(...new Uint8Array(signature)));
+
+  return `${subscriberId}.${timestamp}.${signatureBase64}`;
+}
+
+async function createEmailHtml(etymology: Etymology, subscriberId: string): Promise<string> {
   const feedbackUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/record-etymology-feedback`;
-  const likeUrl = `${feedbackUrl}?subscriber_id=${subscriberId}&saying=${encodeURIComponent(etymology.saying)}&feedback=like`;
-  const dislikeUrl = `${feedbackUrl}?subscriber_id=${subscriberId}&saying=${encodeURIComponent(etymology.saying)}&feedback=dislike`;
+  const unsubscribeUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/unsubscribe`;
+
+  const feedbackToken = await generateFeedbackToken(subscriberId, etymology.saying);
+  const unsubscribeToken = await generateUnsubscribeToken(subscriberId);
+
+  const likeUrl = `${feedbackUrl}?token=${encodeURIComponent(feedbackToken)}&saying=${encodeURIComponent(etymology.saying)}&feedback=like`;
+  const dislikeUrl = `${feedbackUrl}?token=${encodeURIComponent(feedbackToken)}&saying=${encodeURIComponent(etymology.saying)}&feedback=dislike`;
+  const unsubscribe = `${unsubscribeUrl}?token=${encodeURIComponent(unsubscribeToken)}`;
+
   return `
     <!DOCTYPE html>
     <html>
@@ -237,6 +305,7 @@ function createEmailHtml(etymology: Etymology, subscriberId: string): string {
           <div class="footer">
             <p>Etymology Daily - Bringing the stories of language to life</p>
             <p>You're receiving this because you subscribed to our daily etymology emails.</p>
+            <p><a href="${unsubscribe}" class="unsubscribe">Unsubscribe from daily etymologies</a></p>
           </div>
         </div>
       </body>
@@ -325,7 +394,7 @@ Deno.serve(async (req) => {
           from: 'Etymology Daily <onboarding@resend.dev>',
           to: [subscriber.email],
           subject: `📚 Today's Etymology: "${etymology.saying}"`,
-          html: createEmailHtml(etymology, subscriber.id),
+          html: await createEmailHtml(etymology, subscriber.id),
         });
 
         if (emailError) {
@@ -366,10 +435,11 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in send-daily-etymology function:', error);
+    // Don't leak internal error details to users
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: 'An internal error occurred while sending daily etymology' }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
