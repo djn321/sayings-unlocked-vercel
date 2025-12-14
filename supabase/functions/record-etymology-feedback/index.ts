@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': 'https://sayings-unlocked.vercel.app',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -19,18 +19,49 @@ Deno.serve(async (req) => {
 
     console.log('Feedback request:', { subscriberId, saying, feedbackType });
 
+    // Validate inputs
     if (!subscriberId || !saying || !feedbackType) {
-      return new Response('Missing required parameters', { 
-        status: 400,
-        headers: corsHeaders 
-      });
+      return new Response(
+        JSON.stringify({ error: 'Missing required parameters' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
     }
 
+    // Validate UUID format for subscriber_id
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(subscriberId)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid subscriber_id format' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    // Validate feedback type
     if (feedbackType !== 'like' && feedbackType !== 'dislike') {
-      return new Response('Invalid feedback type', { 
-        status: 400,
-        headers: corsHeaders 
-      });
+      return new Response(
+        JSON.stringify({ error: 'Invalid feedback type. Must be "like" or "dislike"' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    // Validate saying length
+    if (saying.length > 500) {
+      return new Response(
+        JSON.stringify({ error: 'Saying text too long' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
     }
 
     // Initialize Supabase client
