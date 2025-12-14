@@ -1,8 +1,6 @@
 import { Hero } from "@/components/Hero";
 import { EmailPreview } from "@/components/EmailPreview";
 import { SubscriptionForm } from "@/components/SubscriptionForm";
-import { FeedbackPagePreview } from "@/components/FeedbackPagePreview";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EtymologyCard } from "@/components/EtymologyCard";
 
 const Index = () => {
@@ -37,31 +35,6 @@ const Index = () => {
         {/* Email Preview Section */}
         <section>
           <EmailPreview />
-        </section>
-
-        {/* Feedback Page Preview Section */}
-        <section>
-          <div className="text-center mb-8">
-            <h2 className="text-3xl font-serif font-bold text-primary mb-4">
-              Feedback Thank You Page
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-8">
-              This is what subscribers see after clicking a feedback button in their email
-            </p>
-          </div>
-          
-          <Tabs defaultValue="like" className="max-w-3xl mx-auto">
-            <TabsList className="grid w-full grid-cols-2 mb-8">
-              <TabsTrigger value="like">Like Response</TabsTrigger>
-              <TabsTrigger value="dislike">Dislike Response</TabsTrigger>
-            </TabsList>
-            <TabsContent value="like">
-              <FeedbackPagePreview feedbackType="like" />
-            </TabsContent>
-            <TabsContent value="dislike">
-              <FeedbackPagePreview feedbackType="dislike" />
-            </TabsContent>
-          </Tabs>
         </section>
 
         {/* Sample Sayings Section */}
