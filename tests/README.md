@@ -2,6 +2,67 @@
 
 This directory contains automated tests for the Sayings Unlocked application.
 
+## 🚀 Automated Test Generation
+
+**New functionality automatically gets test templates!**
+
+### Quick Start
+
+1. **Install Git hooks** (one-time setup):
+```bash
+bun install-hooks
+```
+
+2. **Create a new component/function**:
+```bash
+# Your new file
+touch src/components/MyNewComponent.tsx
+```
+
+3. **Generate test automatically**:
+```bash
+bun generate-test src/components/MyNewComponent.tsx
+```
+
+4. **Or let the pre-commit hook remind you**:
+- When you commit, the hook checks for missing tests
+- It suggests the exact command to generate them
+- You can bypass with `--no-verify` if needed (not recommended)
+
+### How It Works
+
+The system includes:
+- **Test Generator** (`scripts/generate-test.js`) - Creates test templates
+- **Pre-commit Hook** - Checks for missing tests before commits
+- **Smart Detection** - Knows where to place tests based on file type
+
+**Example workflow:**
+```bash
+# 1. Create new component
+touch src/components/UserProfile.tsx
+
+# 2. Generate test template
+bun generate-test src/components/UserProfile.tsx
+# ✅ Test file created: src/components/__tests__/UserProfile.test.tsx
+
+# 3. Fill in test cases
+# The template includes common test scenarios to fill in
+
+# 4. Commit both together
+git add src/components/UserProfile.tsx src/components/__tests__/UserProfile.test.tsx
+git commit -m "Add UserProfile component with tests"
+```
+
+### Test Templates
+
+Generated tests include:
+- ✅ Basic rendering test
+- ✅ User interaction tests
+- ✅ Error handling tests
+- ✅ Loading state tests
+- ✅ Mocked dependencies
+- ✅ Proper imports and setup
+
 ## Test Types
 
 ### 1. Unit & Integration Tests (`tests/edge-functions.test.ts`)
