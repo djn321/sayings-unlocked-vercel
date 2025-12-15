@@ -170,24 +170,57 @@ supabase/
 
 ## Scheduled Email Sending
 
-Set up a cron job to trigger the send-daily-etymology function daily:
+The cron job for sending daily etymology emails is automatically configured during database migrations. However, you need to verify the setup:
 
-1. In Supabase dashboard, go to Database > Cron Jobs
-2. Create a new cron job:
-```sql
-SELECT cron.schedule(
-  'send-daily-etymology',
-  '0 9 * * *',  -- 9 AM daily
-  $$
-  SELECT net.http_post(
-    url := 'https://your-project-id.supabase.co/functions/v1/send-daily-etymology',
-    headers := '{"Authorization": "Bearer YOUR_ANON_KEY"}'::jsonb
-  );
-  $$
-);
+### Verifying the Cron Job
+
+1. The migration `20251214000001_remove_cron_secrets_table.sql` creates a cron job that runs at 8:00 AM UTC daily
+2. The cron job is configured to use the service role key from database settings
+
+### Checking Cron Job Status
+
+Use the verification script to check if the cron job is properly configured:
+
+```bash
+# View the verification script
+cat scripts/verify-cron-job.sql
+
+# Run it via Supabase dashboard SQL editor or CLI
 ```
 
-Or use an external service like:
+### Important Configuration Notes
+
+The cron job requires the following to be set up:
+
+1. **Supabase Secrets** (set via `supabase secrets set`):
+   - `SUPABASE_SERVICE_ROLE_KEY` - For database access
+   - `SUPABASE_URL` - Your Supabase project URL
+   - `GOOGLE_AI_API_KEY` - For AI-generated etymologies
+   - `RESEND_API_KEY` - For sending emails
+   - `SITE_URL` - Your frontend URL (e.g., https://sayings-unlocked.vercel.app)
+   - `FEEDBACK_TOKEN_SECRET` - For signing feedback tokens
+
+2. **Database Setting** (required for cron job authentication):
+   - The cron job uses `current_setting('app.settings.service_role_key', true)` to authenticate
+   - This setting must be configured in the database for the cron job to work
+   - See `scripts/verify-cron-job.sql` for setup instructions
+
+### Manual Trigger
+
+To manually test the email sending function:
+
+```bash
+curl -X POST "https://vmsdalzjlkuilzcetztv.supabase.co/functions/v1/send-daily-etymology" \
+  -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+Note: This will send emails to all active subscribers!
+
+### Alternative: External Cron Services
+
+If you prefer not to use Supabase's built-in cron:
 - GitHub Actions (free)
 - EasyCron
 - cron-job.org

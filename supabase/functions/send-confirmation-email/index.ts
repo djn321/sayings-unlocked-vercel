@@ -3,13 +3,13 @@ import { Resend } from "npm:resend@2.0.0";
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
-const siteUrl = Deno.env.get('SITE_URL');
-if (!siteUrl) {
-  throw new Error('SITE_URL environment variable must be configured');
-}
+// Get CORS origin - use environment variable or fallback for development
+const getCorsOrigin = () => {
+  return Deno.env.get('SITE_URL') || 'https://sayings-unlocked.vercel.app';
+};
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": siteUrl,
+  "Access-Control-Allow-Origin": getCorsOrigin(),
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
@@ -25,7 +25,21 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { email, token }: ConfirmationEmailRequest = await req.json();
+    // Parse request body with error handling
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "Invalid request body" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        }
+      );
+    }
+
+    const { email, token }: ConfirmationEmailRequest = body;
 
     if (!email || !token) {
       return new Response(

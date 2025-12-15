@@ -1,13 +1,13 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.76.1";
 
-const siteUrl = Deno.env.get('SITE_URL');
-if (!siteUrl) {
-  throw new Error('SITE_URL environment variable must be configured');
-}
+// Get CORS origin - use environment variable or fallback for development
+const getCorsOrigin = () => {
+  return Deno.env.get('SITE_URL') || 'https://sayings-unlocked.vercel.app';
+};
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": siteUrl,
+  "Access-Control-Allow-Origin": getCorsOrigin(),
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
@@ -22,7 +22,21 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { token }: ConfirmRequest = await req.json();
+    // Parse request body with error handling
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "Invalid request body" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        }
+      );
+    }
+
+    const { token }: ConfirmRequest = body;
 
     if (!token) {
       return new Response(
