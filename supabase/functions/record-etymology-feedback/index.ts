@@ -1,12 +1,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
-const siteUrl = Deno.env.get('SITE_URL');
-if (!siteUrl) {
-  throw new Error('SITE_URL environment variable must be configured');
-}
+// Get CORS origin - use environment variable or fallback for development
+const getCorsOrigin = () => {
+  return Deno.env.get('SITE_URL') || 'https://sayings-unlocked.vercel.app';
+};
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': siteUrl,
+  'Access-Control-Allow-Origin': getCorsOrigin(),
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
