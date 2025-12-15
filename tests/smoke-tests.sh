@@ -4,10 +4,18 @@
 # These tests verify that endpoints are reachable and return expected status codes
 # Run with: bash tests/smoke-tests.sh
 
-set -e
-
 SUPABASE_URL="${SUPABASE_URL:-https://vmsdalzjlkuilzcetztv.supabase.co}"
 SITE_URL="${SITE_URL:-https://sayings-unlocked.vercel.app}"
+
+# Load anon key from .env file
+if [ -f .env ]; then
+  ANON_KEY=$(grep VITE_SUPABASE_PUBLISHABLE_KEY .env | cut -d'"' -f2)
+fi
+
+if [ -z "$ANON_KEY" ]; then
+  echo "⚠️  Warning: ANON_KEY not found in .env file"
+  echo "GET requests may fail without authentication"
+fi
 
 echo "🧪 Running smoke tests against $SUPABASE_URL"
 echo "================================================"
@@ -31,7 +39,15 @@ test_endpoint() {
 
   echo -n "Testing $name... "
 
-  status=$(curl -s -o /dev/null -w "%{http_code}" -X "$method" "$url")
+  # Add auth headers for GET requests to Supabase edge functions
+  if [[ "$method" == "GET" ]] && [[ "$url" == *"supabase"* ]] && [[ -n "$ANON_KEY" ]]; then
+    status=$(curl -s -o /dev/null -w "%{http_code}" \
+      -H "apikey: $ANON_KEY" \
+      -H "Authorization: Bearer $ANON_KEY" \
+      -X "$method" "$url")
+  else
+    status=$(curl -s -o /dev/null -w "%{http_code}" -X "$method" "$url")
+  fi
 
   if [ "$status" = "$expected_status" ]; then
     echo -e "${GREEN}✓ PASS${NC} (HTTP $status)"
