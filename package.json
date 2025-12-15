@@ -13,7 +13,9 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
-    "smoke-test": "bash tests/smoke-tests.sh"
+    "smoke-test": "bash tests/smoke-tests.sh",
+    "generate-test": "node scripts/generate-test.js",
+    "install-hooks": "bash scripts/install-hooks.sh"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
