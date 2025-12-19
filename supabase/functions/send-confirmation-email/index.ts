@@ -59,7 +59,7 @@ const handler = async (req: Request): Promise<Response> => {
     const confirmationUrl = `${frontendUrl}/confirm?token=${token}`;
 
     const emailResponse = await resend.emails.send({
-      from: "Etymology Daily <onboarding@resend.dev>",
+      from: "Etymology Daily <sayings@padelcourtfinder.uk>",
       to: [email],
       subject: "Confirm your Etymology Daily subscription",
       html: `
