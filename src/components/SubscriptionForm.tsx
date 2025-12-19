@@ -32,16 +32,14 @@ export const SubscriptionForm = () => {
         return;
       }
 
-      // Save to database
+      // Save to database using secure RPC function
       const { data: newSubscriber, error } = await supabase
-        .from("subscribers")
-        .insert({ email: validation.data.email })
-        .select()
-        .single();
+        .rpc('subscribe_user', { user_email: validation.data.email });
 
       if (error) {
         console.error("Database insert error:", error);
-        if (error.code === "23505") {
+        // Check for unique violation in the error message
+        if (error.message?.includes('Email already subscribed')) {
           toast({
             title: "Already subscribed",
             description: "This email is already on our list!",
@@ -49,7 +47,7 @@ export const SubscriptionForm = () => {
         } else {
           toast({
             title: "Database error",
-            description: `Error code: ${error.code || 'unknown'}. Message: ${error.message || 'No message'}`,
+            description: `Error: ${error.message || 'No message'}`,
             variant: "destructive",
           });
         }
