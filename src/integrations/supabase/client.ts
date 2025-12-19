@@ -8,9 +8,23 @@ const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
+// Fallback storage for test environments where localStorage isn't available
+const getStorage = () => {
+  if (typeof localStorage !== 'undefined') {
+    return localStorage;
+  }
+  // Simple in-memory storage for tests
+  const memoryStorage: Record<string, string> = {};
+  return {
+    getItem: (key: string) => memoryStorage[key] || null,
+    setItem: (key: string, value: string) => { memoryStorage[key] = value; },
+    removeItem: (key: string) => { delete memoryStorage[key]; },
+  };
+};
+
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
-    storage: localStorage,
+    storage: getStorage(),
     persistSession: true,
     autoRefreshToken: true,
   }
