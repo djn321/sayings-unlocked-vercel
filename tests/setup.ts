@@ -19,6 +19,17 @@ afterEach(() => {
 process.env.VITE_SUPABASE_URL = 'http://localhost:54321';
 process.env.VITE_SUPABASE_PUBLISHABLE_KEY = 'test-anon-key';
 
+// Mock localStorage for tests
+const localStorageMock = {
+  getItem: vi.fn(),
+  setItem: vi.fn(),
+  removeItem: vi.fn(),
+  clear: vi.fn(),
+  length: 0,
+  key: vi.fn(),
+};
+global.localStorage = localStorageMock as Storage;
+
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
