@@ -61,7 +61,7 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
       }],
       generationConfig: {
         temperature: 1.0,
-        maxOutputTokens: 1024,
+        maxOutputTokens: 2048, // Increased to prevent truncation
         responseMimeType: 'application/json',
         responseSchema: {
           type: 'object',
@@ -83,7 +83,23 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
   }
 
   const data = await response.json();
+
+  // Check if the response was truncated
+  const finishReason = data.candidates[0].finishReason;
+  console.log('Gemini API finish reason:', finishReason);
+
+  if (finishReason === 'MAX_TOKENS' || finishReason === 'RECITATION') {
+    console.error('Response was truncated. Finish reason:', finishReason);
+    throw new Error(`Gemini API response was truncated (${finishReason}). Please try again.`);
+  }
+
+  if (!data.candidates[0].content?.parts?.[0]?.text) {
+    console.error('No content in Gemini response:', JSON.stringify(data, null, 2));
+    throw new Error('Gemini API returned no content');
+  }
+
   const content = data.candidates[0].content.parts[0].text;
+  console.log('Gemini response length:', content.length, 'characters');
 
   // Remove markdown code blocks if present
   const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
@@ -414,8 +430,12 @@ Deno.serve(async (req) => {
         cycle_number: currentCycle
       });
 
-    // Send emails to all subscribers
-    const emailPromises = subscribers.map(async (subscriber) => {
+    // Send emails to all subscribers with rate limiting
+    // Resend allows 2 requests/second, so we add 600ms delay between sends
+    const results = [];
+    const delayMs = 600; // 600ms = 1.67 requests/second (safely under 2/sec limit)
+
+    for (const subscriber of subscribers) {
       try {
         const { error: emailError } = await resend.emails.send({
           from: 'Etymology Daily <sayings@padelcourtfinder.uk>',
@@ -426,24 +446,27 @@ Deno.serve(async (req) => {
 
         if (emailError) {
           console.error(`Error sending to ${subscriber.email}:`, emailError);
-          return { email: subscriber.email, success: false, error: emailError };
+          results.push({ email: subscriber.email, success: false, error: emailError });
+        } else {
+          // Update last_sent_at timestamp
+          await supabase
+            .from('subscribers')
+            .update({ last_sent_at: new Date().toISOString() })
+            .eq('id', subscriber.id);
+
+          console.log(`Successfully sent to ${subscriber.email}`);
+          results.push({ email: subscriber.email, success: true });
         }
-
-        // Update last_sent_at timestamp
-        await supabase
-          .from('subscribers')
-          .update({ last_sent_at: new Date().toISOString() })
-          .eq('id', subscriber.id);
-
-        console.log(`Successfully sent to ${subscriber.email}`);
-        return { email: subscriber.email, success: true };
       } catch (error) {
         console.error(`Failed to send to ${subscriber.email}:`, error);
-        return { email: subscriber.email, success: false, error };
+        results.push({ email: subscriber.email, success: false, error });
       }
-    });
 
-    const results = await Promise.all(emailPromises);
+      // Add delay between sends to respect rate limit (except for the last one)
+      if (subscriber !== subscribers[subscribers.length - 1]) {
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
     const successCount = results.filter(r => r.success).length;
     const failCount = results.filter(r => !r.success).length;
 
