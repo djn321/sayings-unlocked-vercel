@@ -62,6 +62,17 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
       generationConfig: {
         temperature: 1.0,
         maxOutputTokens: 1024,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'object',
+          properties: {
+            saying: { type: 'string' },
+            origin: { type: 'string' },
+            meaning: { type: 'string' },
+            era: { type: 'string' }
+          },
+          required: ['saying', 'origin', 'meaning', 'era']
+        }
       }
     }),
   });
@@ -76,7 +87,23 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
 
   // Remove markdown code blocks if present
   const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  const etymology = JSON.parse(cleanContent);
+
+  let etymology: Etymology;
+  try {
+    etymology = JSON.parse(cleanContent);
+  } catch (parseError) {
+    console.error('Failed to parse JSON response from Gemini API');
+    console.error('Raw content:', content);
+    console.error('Cleaned content:', cleanContent);
+    console.error('Parse error:', parseError);
+    throw new Error(`Invalid JSON response from AI: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+  }
+
+  // Validate the parsed etymology has all required fields
+  if (!etymology.saying || !etymology.origin || !etymology.meaning || !etymology.era) {
+    console.error('Missing required fields in etymology:', etymology);
+    throw new Error('Generated etymology is missing required fields');
+  }
 
   console.log('Generated etymology:', etymology.saying);
   return etymology;
