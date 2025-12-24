@@ -8,6 +8,7 @@ import Confirm from "./pages/Confirm";
 import Admin from "./pages/Admin";
 import Auth from "./pages/Auth";
 import Feedback from "./pages/Feedback";
+import UnsubscribeSuccess from "./pages/UnsubscribeSuccess";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,6 +25,7 @@ const App = () => (
           <Route path="/admin" element={<Admin />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/feedback" element={<Feedback />} />
+          <Route path="/unsubscribe-success" element={<UnsubscribeSuccess />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
