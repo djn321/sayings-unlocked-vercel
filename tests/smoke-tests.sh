@@ -91,40 +91,6 @@ test_endpoint \
   "POST"
 
 echo ""
-echo "Critical Function Tests:"
-echo "------------------------"
-
-# Test 5: Send daily etymology endpoint accessibility
-# NOTE: This test checks if the endpoint is accessible but may send emails
-# If there are no active subscribers, it returns 200 with "No active subscribers"
-# If there are subscribers, it will send emails - use with caution in production
-echo -n "Testing send-daily-etymology (WARNING: may send emails)... "
-if [[ "$ANON_KEY" ]]; then
-  status=$(curl -s -o /dev/null -w "%{http_code}" \
-    -H "apikey: $ANON_KEY" \
-    -H "Authorization: Bearer $ANON_KEY" \
-    -H "Content-Type: application/json" \
-    -X POST \
-    "$SUPABASE_URL/functions/v1/send-daily-etymology" \
-    -d '{}')
-
-  # Accept 200 (success) or 500 (expected if no subscribers or config issue)
-  # The function returns 500 if env vars are missing, which we want to catch
-  if [ "$status" = "200" ]; then
-    echo -e "${GREEN}✓ PASS${NC} (HTTP $status - Endpoint accessible)"
-    ((PASSED++))
-  elif [ "$status" = "500" ]; then
-    echo -e "${YELLOW}⚠ WARN${NC} (HTTP $status - Check configuration or no subscribers)"
-    ((PASSED++))
-  else
-    echo -e "${RED}✗ FAIL${NC} (Expected HTTP 200 or 500, got $status)"
-    ((FAILED++))
-  fi
-else
-  echo -e "${YELLOW}⊘ SKIP${NC} (No ANON_KEY available)"
-fi
-
-echo ""
 echo "Security Tests:"
 echo "---------------"
 
