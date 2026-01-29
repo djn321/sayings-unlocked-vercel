@@ -24,12 +24,12 @@ async function verifyFeedbackToken(token: string, saying: string): Promise<strin
       return null;
     }
 
-    // Check if token is expired (valid for 7 days)
+    // Check if token is expired (valid for 48 hours)
     const tokenTime = parseInt(timestamp);
     const now = Date.now();
-    const sevenDays = 7 * 24 * 60 * 60 * 1000;
+    const fortyEightHours = 48 * 60 * 60 * 1000;
 
-    if (now - tokenTime > sevenDays) {
+    if (now - tokenTime > fortyEightHours) {
       console.log('Token expired');
       return null;
     }
@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
     const saying = url.searchParams.get('saying');
     const feedbackType = url.searchParams.get('feedback');
 
-    console.log('Feedback request:', { token: token ? 'present' : 'missing', saying, feedbackType });
+    console.log('Feedback request received:', { hasToken: !!token, hasSaying: !!saying, feedbackType });
 
     // Validate inputs
     if (!token || !saying || !feedbackType) {
@@ -118,10 +118,32 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Validate saying length
+    // Validate saying parameter
+    if (!saying || saying.trim().length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'Saying parameter cannot be empty' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
     if (saying.length > 500) {
       return new Response(
         JSON.stringify({ error: 'Saying text too long' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    // Validate saying contains only reasonable characters (alphanumeric, spaces, and common punctuation)
+    const validSayingPattern = /^[a-zA-Z0-9\s.,!?'"()\-:;]+$/;
+    if (!validSayingPattern.test(saying)) {
+      return new Response(
+        JSON.stringify({ error: 'Saying contains invalid characters' }),
         {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -135,48 +157,66 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Check if feedback already exists for this subscriber and saying
+    // One-time use: reject if feedback already recorded (no updates allowed)
     const { data: existingFeedback } = await supabase
       .from('etymology_feedback')
-      .select('id')
+      .select('id, feedback_type')
       .eq('subscriber_id', subscriberId)
       .eq('etymology_saying', saying)
       .single();
 
     if (existingFeedback) {
-      // Update existing feedback
-      const { error: updateError } = await supabase
-        .from('etymology_feedback')
-        .update({ feedback_type: feedbackType })
-        .eq('id', existingFeedback.id);
-
-      if (updateError) {
-        console.error('Error updating feedback:', updateError);
-        throw updateError;
-      }
-
-      console.log(`Updated feedback for subscriber ${subscriberId}`);
-    } else {
-      // Insert new feedback
-      const { error: insertError } = await supabase
-        .from('etymology_feedback')
-        .insert({
-          etymology_saying: saying,
-          feedback_type: feedbackType,
-          subscriber_id: subscriberId,
-        });
-
-      if (insertError) {
-        console.error('Error inserting feedback:', insertError);
-        throw insertError;
-      }
-
-      console.log(`Recorded ${feedbackType} feedback for subscriber ${subscriberId}`);
+      // Feedback already recorded - token has been used
+      return new Response(
+        JSON.stringify({
+          error: 'Feedback already recorded',
+          message: 'Thank you! Your feedback has already been recorded for this etymology.'
+        }),
+        {
+          status: 409,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
     }
+
+    // Insert new feedback
+    const { error: insertError } = await supabase
+      .from('etymology_feedback')
+      .insert({
+        etymology_saying: saying,
+        feedback_type: feedbackType,
+        subscriber_id: subscriberId,
+      });
+
+    if (insertError) {
+      console.error('Error inserting feedback:', insertError);
+      throw insertError;
+    }
+
+    console.log(`Recorded ${feedbackType} feedback for subscriber ${subscriberId}`);
 
     // Redirect to the thank you page on the main website
     const siteUrl = Deno.env.get('SITE_URL');
     if (!siteUrl) {
       throw new Error('SITE_URL environment variable not configured');
+    }
+
+    // Validate SITE_URL is a valid HTTPS URL
+    let validatedUrl: URL;
+    try {
+      validatedUrl = new URL(siteUrl);
+      if (validatedUrl.protocol !== 'https:') {
+        throw new Error('SITE_URL must use HTTPS protocol');
+      }
+      // Validate domain is from expected list
+      const allowedDomains = ['sayings-unlocked.vercel.app', 'localhost'];
+      const hostname = validatedUrl.hostname;
+      if (!allowedDomains.some(domain => hostname === domain || hostname.endsWith(`.${domain}`))) {
+        throw new Error('SITE_URL domain not in allowed list');
+      }
+    } catch (error) {
+      console.error('Invalid SITE_URL:', error);
+      throw new Error('Invalid SITE_URL configuration');
     }
 
     const redirectUrl = `${siteUrl}/feedback?type=${feedbackType}`;

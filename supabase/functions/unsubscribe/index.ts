@@ -123,6 +123,24 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('SITE_URL environment variable not configured');
     }
 
+    // Validate SITE_URL is a valid HTTPS URL
+    let validatedUrl: URL;
+    try {
+      validatedUrl = new URL(siteUrl);
+      if (validatedUrl.protocol !== 'https:') {
+        throw new Error('SITE_URL must use HTTPS protocol');
+      }
+      // Validate domain is from expected list
+      const allowedDomains = ['sayings-unlocked.vercel.app', 'localhost'];
+      const hostname = validatedUrl.hostname;
+      if (!allowedDomains.some(domain => hostname === domain || hostname.endsWith(`.${domain}`))) {
+        throw new Error('SITE_URL domain not in allowed list');
+      }
+    } catch (error) {
+      console.error('Invalid SITE_URL:', error);
+      throw new Error('Invalid SITE_URL configuration');
+    }
+
     return new Response(null, {
       status: 302,
       headers: {

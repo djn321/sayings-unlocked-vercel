@@ -6,8 +6,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.76.1";
  * This sets the database configuration needed for the cron job to work
  */
 
+// Get CORS origin - use environment variable or fallback for development
+const getCorsOrigin = () => {
+  return Deno.env.get('SITE_URL') || 'https://sayings-unlocked.vercel.app';
+};
+
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": getCorsOrigin(),
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
@@ -60,18 +65,10 @@ const handler = async (req: Request): Promise<Response> => {
   } catch (error: unknown) {
     console.error("Error in setup-cron-auth function:", error);
 
-    // Get service role key for manual setup instructions
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || '';
-
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        manual_setup: {
-          instructions: 'Run this SQL in Supabase Dashboard > SQL Editor:',
-          sql: `ALTER DATABASE postgres SET app.settings.service_role_key = 'YOUR_SERVICE_ROLE_KEY';`,
-          hint: `Your service role key starts with: ${serviceRoleKey.substring(0, 20)}...`
-        }
+        error: 'Configuration setup failed. Please check server logs or contact administrator.',
       }),
       {
         status: 500,

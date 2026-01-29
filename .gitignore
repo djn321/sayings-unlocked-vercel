@@ -27,3 +27,6 @@ dist-ssr
 *.sln
 *.sw?
 coverage/
+
+# Project memory (Claude Code)
+memory.md

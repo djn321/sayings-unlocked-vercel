@@ -48,10 +48,11 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
   "era": "time period (e.g., '16th Century', 'Ancient Rome', '1800s')"
 }`;
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`, {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'x-goog-api-key': geminiApiKey,
     },
     body: JSON.stringify({
       contents: [{
@@ -367,8 +368,66 @@ Deno.serve(async (req) => {
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    // Verify authorization - accept either service role key (for cron) or admin user
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing authorization header' }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    // Check if this is a service role key request (used by cron jobs)
+    const isServiceRoleAuth = authHeader === `Bearer ${supabaseServiceKey}`;
+
+    if (!isServiceRoleAuth) {
+      // Fall back to admin user authentication for manual triggers
+      const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+        global: {
+          headers: { Authorization: authHeader }
+        }
+      });
+
+      // Get the authenticated user
+      const { data: { user }, error: userError } = await userSupabase.auth.getUser();
+
+      if (userError || !user) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid or expired authentication token' }),
+          {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        );
+      }
+
+      // Check if user has admin role
+      const { data: isAdmin, error: roleError } = await userSupabase.rpc('has_role', {
+        _user_id: user.id,
+        _role: 'admin'
+      });
+
+      if (roleError || !isAdmin) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized. Admin privileges required.' }),
+          {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        );
+      }
+    }
+
+    console.log(`Authentication: ${isServiceRoleAuth ? 'service role (cron)' : 'admin user'}`)
+
+    // Use service role key for actual operations
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Get all active subscribers
     const { data: subscribers, error: fetchError } = await supabase
@@ -391,19 +450,19 @@ Deno.serve(async (req) => {
 
     console.log(`Found ${subscribers.length} active subscribers`);
 
-    // Get recently sent sayings (last 30 days) to avoid duplicates
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    const { data: recentSends } = await supabase
+    // Get ALL previously sent sayings to avoid duplicates
+    const { data: allSends } = await supabase
       .from('etymology_sends')
       .select('etymology_saying')
-      .gte('sent_at', thirtyDaysAgo.toISOString())
       .order('sent_at', { ascending: false });
 
-    const recentSayings = recentSends?.map(e => e.etymology_saying) || [];
-    
-    // Get feedback data from the last 30 days
+    const allSentSayings = allSends?.map(e => e.etymology_saying.toLowerCase().trim()) || [];
+    const allSentSayingsSet = new Set(allSentSayings);
+
+    // Get feedback data from the last 30 days (for content guidance only)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
     const { data: feedbackData } = await supabase
       .from('etymology_feedback')
       .select('etymology_saying, feedback_type')
@@ -414,9 +473,36 @@ Deno.serve(async (req) => {
     
     console.log(`Feedback context: ${liked.length} liked, ${disliked.length} disliked`);
     
-    // Generate a new etymology using AI
+    // Generate a new etymology using AI, with retry logic to avoid duplicates
     console.log('Generating new etymology with AI...');
-    const etymology = await generateEtymology(recentSayings, { liked, disliked });
+    const maxRetries = 5;
+    let etymology: Etymology | null = null;
+    let attempts = 0;
+
+    // Pass recent sayings to the AI for guidance (last 100 to keep prompt manageable)
+    const recentForPrompt = allSends?.slice(0, 100).map(e => e.etymology_saying) || [];
+
+    while (attempts < maxRetries) {
+      attempts++;
+      console.log(`Generation attempt ${attempts}/${maxRetries}`);
+
+      const candidate = await generateEtymology(recentForPrompt, { liked, disliked });
+      const candidateNormalised = candidate.saying.toLowerCase().trim();
+
+      if (!allSentSayingsSet.has(candidateNormalised)) {
+        etymology = candidate;
+        console.log(`Generated unique saying: "${candidate.saying}"`);
+        break;
+      } else {
+        console.log(`Duplicate detected: "${candidate.saying}" - retrying...`);
+        // Add this to the prompt exclusion list for next attempt
+        recentForPrompt.unshift(candidate.saying);
+      }
+    }
+
+    if (!etymology) {
+      throw new Error(`Failed to generate unique etymology after ${maxRetries} attempts. All generated sayings were duplicates.`);
+    }
 
     // Get the current cycle number
     const { data: cycleData } = await supabase.rpc('get_current_etymology_cycle');
