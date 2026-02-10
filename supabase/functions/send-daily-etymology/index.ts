@@ -384,7 +384,10 @@ Deno.serve(async (req) => {
     }
 
     // Check if this is a service role key request (used by cron jobs)
-    const isServiceRoleAuth = authHeader === `Bearer ${supabaseServiceKey}`;
+    // Note: SUPABASE_SERVICE_ROLE_KEY env var contains a different format (sb_secret_...),
+    // so we use a custom secret with the actual JWT for cron auth comparison
+    const cronServiceKey = Deno.env.get('SERVICE_ROLE_KEY_ACTUAL') || supabaseServiceKey;
+    const isServiceRoleAuth = authHeader === `Bearer ${cronServiceKey}`;
 
     if (!isServiceRoleAuth) {
       // Fall back to admin user authentication for manual triggers
