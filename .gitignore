@@ -28,5 +28,6 @@ dist-ssr
 *.sw?
 coverage/
 
-# Project memory (Claude Code)
+# Local documentation
+*.local.md
 memory.md
