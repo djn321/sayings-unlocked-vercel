@@ -1,5 +1,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import { Resend } from 'npm:resend@4.0.0';
+import { initLogger } from 'npm:braintrust';
+
+const logger = initLogger({
+  projectName: 'sayings-unlocked',
+  apiKey: Deno.env.get('BRAINTRUST_API_KEY'),
+  asyncFlush: false,
+});
 
 // Get CORS origin - use environment variable or fallback for development
 const getCorsOrigin = () => {
@@ -48,82 +55,144 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
   "era": "time period (e.g., '16th Century', 'Ancient Rome', '1800s')"
 }`;
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': geminiApiKey,
-    },
-    body: JSON.stringify({
-      contents: [{
-        parts: [{
-          text: prompt
-        }]
-      }],
-      generationConfig: {
+  return await logger.traced(async (span) => {
+    span.log({
+      input: [{ role: 'user', content: prompt }],
+      metadata: {
+        model: 'gemini-2.5-flash',
         temperature: 1.0,
-        maxOutputTokens: 2048, // Increased to prevent truncation
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: 'object',
-          properties: {
-            saying: { type: 'string' },
-            origin: { type: 'string' },
-            meaning: { type: 'string' },
-            era: { type: 'string' }
+        maxOutputTokens: 2048,
+      },
+    });
+
+    // Retry settings for transient errors
+    const maxRetries = 3;
+    const baseDelayMs = 2000; // 2s, 4s, 8s with exponential backoff
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`Gemini API attempt ${attempt}/${maxRetries}`);
+
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': geminiApiKey,
           },
-          required: ['saying', 'origin', 'meaning', 'era']
+          body: JSON.stringify({
+            contents: [{
+              parts: [{
+                text: prompt
+              }]
+            }],
+            generationConfig: {
+              temperature: 1.0,
+              maxOutputTokens: 2048,
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: 'object',
+                properties: {
+                  saying: { type: 'string' },
+                  origin: { type: 'string' },
+                  meaning: { type: 'string' },
+                  era: { type: 'string' }
+                },
+                required: ['saying', 'origin', 'meaning', 'era']
+              }
+            }
+          }),
+        });
+
+        // Check for retryable HTTP errors (503, 429, 500)
+        if (!response.ok) {
+          const errorText = await response.text();
+          const isRetryable = [500, 502, 503, 429].includes(response.status);
+
+          if (isRetryable && attempt < maxRetries) {
+            const delayMs = baseDelayMs * Math.pow(2, attempt - 1);
+            console.log(`Retryable error ${response.status}, waiting ${delayMs}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+            lastError = new Error(`Google AI API request failed: ${response.status} - ${errorText}`);
+            continue;
+          }
+          throw new Error(`Google AI API request failed: ${response.status} - ${errorText}`);
         }
+
+        const data = await response.json();
+
+        // Check if the response was truncated
+        const finishReason = data.candidates[0].finishReason;
+        console.log('Gemini API finish reason:', finishReason);
+
+        // MAX_TOKENS and RECITATION are retryable - the model may succeed on retry
+        if (finishReason === 'MAX_TOKENS' || finishReason === 'RECITATION') {
+          console.error('Response was truncated. Finish reason:', finishReason);
+
+          if (attempt < maxRetries) {
+            const delayMs = baseDelayMs * Math.pow(2, attempt - 1);
+            console.log(`Retrying after ${finishReason}, waiting ${delayMs}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+            lastError = new Error(`Gemini API response was truncated (${finishReason}). Please try again.`);
+            continue;
+          }
+          throw new Error(`Gemini API response was truncated (${finishReason}) after ${maxRetries} attempts.`);
+        }
+
+        if (!data.candidates[0].content?.parts?.[0]?.text) {
+          console.error('No content in Gemini response:', JSON.stringify(data, null, 2));
+          throw new Error('Gemini API returned no content');
+        }
+
+        const content = data.candidates[0].content.parts[0].text;
+        console.log('Gemini response length:', content.length, 'characters');
+
+        // Remove markdown code blocks if present
+        const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+
+        let etymology: Etymology;
+        try {
+          etymology = JSON.parse(cleanContent);
+        } catch (parseError) {
+          console.error('Failed to parse JSON response from Gemini API');
+          console.error('Raw content:', content);
+          console.error('Cleaned content:', cleanContent);
+          console.error('Parse error:', parseError);
+          throw new Error(`Invalid JSON response from AI: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+        }
+
+        // Validate the parsed etymology has all required fields
+        if (!etymology.saying || !etymology.origin || !etymology.meaning || !etymology.era) {
+          console.error('Missing required fields in etymology:', etymology);
+          throw new Error('Generated etymology is missing required fields');
+        }
+
+        console.log('Generated etymology:', etymology.saying);
+
+        span.log({
+          output: etymology,
+          metadata: { finishReason, responseLength: content.length, attempts: attempt },
+        });
+
+        return etymology;
+
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        // If this isn't the last attempt, only continue for unexpected errors
+        // (retryable errors are handled above with continue)
+        if (attempt === maxRetries) {
+          throw lastError;
+        }
+
+        // For unexpected errors, don't retry - throw immediately
+        throw lastError;
       }
-    }),
-  });
+    }
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Google AI API request failed: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
-
-  // Check if the response was truncated
-  const finishReason = data.candidates[0].finishReason;
-  console.log('Gemini API finish reason:', finishReason);
-
-  if (finishReason === 'MAX_TOKENS' || finishReason === 'RECITATION') {
-    console.error('Response was truncated. Finish reason:', finishReason);
-    throw new Error(`Gemini API response was truncated (${finishReason}). Please try again.`);
-  }
-
-  if (!data.candidates[0].content?.parts?.[0]?.text) {
-    console.error('No content in Gemini response:', JSON.stringify(data, null, 2));
-    throw new Error('Gemini API returned no content');
-  }
-
-  const content = data.candidates[0].content.parts[0].text;
-  console.log('Gemini response length:', content.length, 'characters');
-
-  // Remove markdown code blocks if present
-  const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-
-  let etymology: Etymology;
-  try {
-    etymology = JSON.parse(cleanContent);
-  } catch (parseError) {
-    console.error('Failed to parse JSON response from Gemini API');
-    console.error('Raw content:', content);
-    console.error('Cleaned content:', cleanContent);
-    console.error('Parse error:', parseError);
-    throw new Error(`Invalid JSON response from AI: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
-  }
-
-  // Validate the parsed etymology has all required fields
-  if (!etymology.saying || !etymology.origin || !etymology.meaning || !etymology.era) {
-    console.error('Missing required fields in etymology:', etymology);
-    throw new Error('Generated etymology is missing required fields');
-  }
-
-  console.log('Generated etymology:', etymology.saying);
-  return etymology;
+    // This shouldn't be reached, but just in case
+    throw lastError || new Error('Failed to generate etymology after all retries');
+  }, { name: 'generate-etymology', spanAttributes: { type: 'llm' } });
 }
 
 const resend = new Resend(Deno.env.get('RESEND_API_KEY') as string);
@@ -357,6 +426,53 @@ async function createEmailHtml(etymology: Etymology, subscriberId: string): Prom
   `;
 }
 
+// Send failure notification email to admin
+async function sendFailureNotification(errorMessage: string, context: string): Promise<void> {
+  const adminEmail = 'test@nickdillon.uk';
+
+  try {
+    await resend.emails.send({
+      from: 'Etymology Daily <sayings@padelcourtfinder.uk>',
+      to: [adminEmail],
+      subject: '⚠️ Etymology Daily - Send Failed',
+      html: `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="UTF-8">
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.6; color: #333; }
+              .container { max-width: 600px; margin: 40px auto; padding: 24px; }
+              .header { background: #dc2626; color: white; padding: 16px 24px; border-radius: 8px 8px 0 0; }
+              .content { background: #fef2f2; padding: 24px; border-radius: 0 0 8px 8px; border: 1px solid #fecaca; }
+              .error-box { background: white; padding: 16px; border-radius: 4px; font-family: monospace; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+              .timestamp { color: #6b7280; font-size: 14px; margin-top: 16px; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h2 style="margin: 0;">Daily Etymology Send Failed</h2>
+              </div>
+              <div class="content">
+                <p><strong>Context:</strong> ${context}</p>
+                <p><strong>Error:</strong></p>
+                <div class="error-box">${errorMessage}</div>
+                <p class="timestamp">Occurred at: ${new Date().toISOString()}</p>
+                <p>Please check the <a href="https://supabase.com/dashboard/project/vmsdalzjlkuilzcetztv/functions/send-daily-etymology/logs">Edge Function logs</a> for more details.</p>
+              </div>
+            </div>
+          </body>
+        </html>
+      `,
+    });
+    console.log('Failure notification sent to admin');
+  } catch (notifyError) {
+    // Don't let notification failure mask the original error
+    console.error('Failed to send failure notification:', notifyError);
+  }
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -397,8 +513,9 @@ Deno.serve(async (req) => {
         }
       });
 
-      // Get the authenticated user
-      const { data: { user }, error: userError } = await userSupabase.auth.getUser();
+      // Get the authenticated user - pass JWT directly for server-side verification
+      const token = authHeader.replace('Bearer ', '');
+      const { data: { user }, error: userError } = await userSupabase.auth.getUser(token);
 
       if (userError || !user) {
         return new Response(
@@ -561,6 +678,16 @@ Deno.serve(async (req) => {
 
     console.log(`Email send complete. Success: ${successCount}, Failed: ${failCount}`);
 
+    // Send notification if all emails failed
+    if (successCount === 0 && subscribers.length > 0) {
+      const failedEmails = results.filter(r => !r.success).map(r => r.email).join(', ');
+      await sendFailureNotification(
+        `All ${failCount} email(s) failed to send. Failed recipients: ${failedEmails}`,
+        'Email sending completed but all sends failed'
+      );
+    }
+
+    await logger.flush();
     return new Response(
       JSON.stringify({
         message: 'Daily etymology emails sent',
@@ -576,6 +703,12 @@ Deno.serve(async (req) => {
     );
   } catch (error: unknown) {
     console.error('Error in send-daily-etymology function:', error);
+
+    // Send failure notification to admin
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    await sendFailureNotification(errorMessage, 'Function threw an exception during execution');
+
+    await logger.flush();
     // Don't leak internal error details to users
     return new Response(
       JSON.stringify({ error: 'An internal error occurred while sending daily etymology' }),
