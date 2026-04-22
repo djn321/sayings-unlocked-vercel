@@ -55,143 +55,117 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
   "era": "time period (e.g., '16th Century', 'Ancient Rome', '1800s')"
 }`;
 
+  const requestBody = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 1.0,
+      maxOutputTokens: 2048,
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: 'object',
+        properties: {
+          saying: { type: 'string' },
+          origin: { type: 'string' },
+          meaning: { type: 'string' },
+          era: { type: 'string' }
+        },
+        required: ['saying', 'origin', 'meaning', 'era']
+      }
+    }
+  };
+
+  // Try gemini-2.5-flash twice, then fall back to gemini-2.0-flash once
+  const attempts = [
+    { model: 'gemini-2.5-flash', delayMs: 0 },
+    { model: 'gemini-2.5-flash', delayMs: 5000 },
+    { model: 'gemini-2.0-flash', delayMs: 15000 },
+  ];
+
   return await logger.traced(async (span) => {
     span.log({
       input: [{ role: 'user', content: prompt }],
-      metadata: {
-        model: 'gemini-2.5-flash',
-        temperature: 1.0,
-        maxOutputTokens: 2048,
-      },
+      metadata: { model: 'gemini-2.5-flash', temperature: 1.0, maxOutputTokens: 2048 },
     });
 
-    // Retry settings for transient errors
-    const maxRetries = 3;
-    const baseDelayMs = 2000; // 2s, 4s, 8s with exponential backoff
     let lastError: Error | null = null;
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        console.log(`Gemini API attempt ${attempt}/${maxRetries}`);
+    for (let i = 0; i < attempts.length; i++) {
+      const { model, delayMs } = attempts[i];
 
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': geminiApiKey,
-          },
-          body: JSON.stringify({
-            contents: [{
-              parts: [{
-                text: prompt
-              }]
-            }],
-            generationConfig: {
-              temperature: 1.0,
-              maxOutputTokens: 2048,
-              responseMimeType: 'application/json',
-              responseSchema: {
-                type: 'object',
-                properties: {
-                  saying: { type: 'string' },
-                  origin: { type: 'string' },
-                  meaning: { type: 'string' },
-                  era: { type: 'string' }
-                },
-                required: ['saying', 'origin', 'meaning', 'era']
-              }
-            }
-          }),
-        });
-
-        // Check for retryable HTTP errors (503, 429, 500)
-        if (!response.ok) {
-          const errorText = await response.text();
-          const isRetryable = [500, 502, 503, 429].includes(response.status);
-
-          if (isRetryable && attempt < maxRetries) {
-            const delayMs = baseDelayMs * Math.pow(2, attempt - 1);
-            console.log(`Retryable error ${response.status}, waiting ${delayMs}ms before retry...`);
-            await new Promise(resolve => setTimeout(resolve, delayMs));
-            lastError = new Error(`Google AI API request failed: ${response.status} - ${errorText}`);
-            continue;
-          }
-          throw new Error(`Google AI API request failed: ${response.status} - ${errorText}`);
-        }
-
-        const data = await response.json();
-
-        // Check if the response was truncated
-        const finishReason = data.candidates[0].finishReason;
-        console.log('Gemini API finish reason:', finishReason);
-
-        // MAX_TOKENS and RECITATION are retryable - the model may succeed on retry
-        if (finishReason === 'MAX_TOKENS' || finishReason === 'RECITATION') {
-          console.error('Response was truncated. Finish reason:', finishReason);
-
-          if (attempt < maxRetries) {
-            const delayMs = baseDelayMs * Math.pow(2, attempt - 1);
-            console.log(`Retrying after ${finishReason}, waiting ${delayMs}ms...`);
-            await new Promise(resolve => setTimeout(resolve, delayMs));
-            lastError = new Error(`Gemini API response was truncated (${finishReason}). Please try again.`);
-            continue;
-          }
-          throw new Error(`Gemini API response was truncated (${finishReason}) after ${maxRetries} attempts.`);
-        }
-
-        if (!data.candidates[0].content?.parts?.[0]?.text) {
-          console.error('No content in Gemini response:', JSON.stringify(data, null, 2));
-          throw new Error('Gemini API returned no content');
-        }
-
-        const content = data.candidates[0].content.parts[0].text;
-        console.log('Gemini response length:', content.length, 'characters');
-
-        // Remove markdown code blocks if present
-        const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-
-        let etymology: Etymology;
-        try {
-          etymology = JSON.parse(cleanContent);
-        } catch (parseError) {
-          console.error('Failed to parse JSON response from Gemini API');
-          console.error('Raw content:', content);
-          console.error('Cleaned content:', cleanContent);
-          console.error('Parse error:', parseError);
-          throw new Error(`Invalid JSON response from AI: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
-        }
-
-        // Validate the parsed etymology has all required fields
-        if (!etymology.saying || !etymology.origin || !etymology.meaning || !etymology.era) {
-          console.error('Missing required fields in etymology:', etymology);
-          throw new Error('Generated etymology is missing required fields');
-        }
-
-        console.log('Generated etymology:', etymology.saying);
-
-        span.log({
-          output: etymology,
-          metadata: { finishReason, responseLength: content.length, attempts: attempt },
-        });
-
-        return etymology;
-
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-
-        // If this isn't the last attempt, only continue for unexpected errors
-        // (retryable errors are handled above with continue)
-        if (attempt === maxRetries) {
-          throw lastError;
-        }
-
-        // For unexpected errors, don't retry - throw immediately
-        throw lastError;
+      if (delayMs > 0) {
+        console.log(`Waiting ${delayMs}ms before attempt ${i + 1}/${attempts.length}...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
       }
+
+      console.log(`Gemini API attempt ${i + 1}/${attempts.length} using ${model}`);
+
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiApiKey },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        const isRetryable = [500, 502, 503, 429].includes(response.status);
+
+        if (isRetryable && i < attempts.length - 1) {
+          console.log(`Retryable error ${response.status} on ${model}, will retry...`);
+          lastError = new Error(`Google AI API request failed: ${response.status} - ${errorText}`);
+          continue;
+        }
+        throw new Error(`Google AI API request failed: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      const finishReason = data.candidates[0].finishReason;
+      console.log(`Gemini API finish reason (${model}):`, finishReason);
+
+      if (finishReason === 'MAX_TOKENS' || finishReason === 'RECITATION') {
+        if (i < attempts.length - 1) {
+          console.log(`Retrying after ${finishReason} on ${model}...`);
+          lastError = new Error(`Gemini API response truncated (${finishReason})`);
+          continue;
+        }
+        throw new Error(`Gemini API response truncated (${finishReason}) after all attempts`);
+      }
+
+      if (!data.candidates[0].content?.parts?.[0]?.text) {
+        console.error('No content in Gemini response:', JSON.stringify(data, null, 2));
+        throw new Error('Gemini API returned no content');
+      }
+
+      const content = data.candidates[0].content.parts[0].text;
+      console.log('Gemini response length:', content.length, 'characters');
+
+      const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+
+      let etymology: Etymology;
+      try {
+        etymology = JSON.parse(cleanContent);
+      } catch (parseError) {
+        console.error('Failed to parse JSON response from Gemini API');
+        console.error('Raw content:', content);
+        console.error('Cleaned content:', cleanContent);
+        console.error('Parse error:', parseError);
+        throw new Error(`Invalid JSON response from AI: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+      }
+
+      if (!etymology.saying || !etymology.origin || !etymology.meaning || !etymology.era) {
+        console.error('Missing required fields in etymology:', etymology);
+        throw new Error('Generated etymology is missing required fields');
+      }
+
+      console.log('Generated etymology:', etymology.saying);
+      span.log({
+        output: etymology,
+        metadata: { model, finishReason, responseLength: content.length, attemptIndex: i },
+      });
+
+      return etymology;
     }
 
-    // This shouldn't be reached, but just in case
-    throw lastError || new Error('Failed to generate etymology after all retries');
+    throw lastError || new Error('Failed to generate etymology after all attempts');
   }, { name: 'generate-etymology', spanAttributes: { type: 'llm' } });
 }
 
