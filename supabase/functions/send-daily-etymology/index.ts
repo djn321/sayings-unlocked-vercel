@@ -74,11 +74,11 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
     }
   };
 
-  // Try gemini-2.5-flash twice, then fall back to gemini-2.0-flash once
+  // Try gemini-2.5-flash twice, then fall back to gemini-1.5-flash once
   const attempts = [
     { model: 'gemini-2.5-flash', delayMs: 0 },
     { model: 'gemini-2.5-flash', delayMs: 5000 },
-    { model: 'gemini-2.0-flash', delayMs: 15000 },
+    { model: 'gemini-1.5-flash', delayMs: 15000 },
   ];
 
   return await logger.traced(async (span) => {
