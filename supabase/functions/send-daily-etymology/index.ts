@@ -74,11 +74,11 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
     }
   };
 
-  // Try gemini-2.5-flash twice, then fall back to gemini-1.5-flash once
+  // Three attempts on gemini-2.5-flash with increasing delays (Google recommends ~32s retry on 503)
   const attempts = [
     { model: 'gemini-2.5-flash', delayMs: 0 },
-    { model: 'gemini-2.5-flash', delayMs: 5000 },
-    { model: 'gemini-1.5-flash', delayMs: 15000 },
+    { model: 'gemini-2.5-flash', delayMs: 15000 },
+    { model: 'gemini-2.5-flash', delayMs: 35000 },
   ];
 
   return await logger.traced(async (span) => {
