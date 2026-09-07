@@ -1,0 +1,25 @@
+name: Send daily etymology email
+
+on:
+  schedule:
+    - cron: '5 8 * * *' # 08:05 UTC daily
+  workflow_dispatch: {}
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger send-daily-etymology
+        run: |
+          response=$(curl -sS -w "\n%{http_code}" -X POST \
+            "https://vmsdalzjlkuilzcetztv.supabase.co/functions/v1/send-daily-etymology" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          echo "$body"
+          if [ "$http_code" -ge 300 ]; then
+            echo "send-daily-etymology returned HTTP $http_code"
+            exit 1
+          fi

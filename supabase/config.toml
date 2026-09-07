@@ -3,6 +3,9 @@ project_id = "vmsdalzjlkuilzcetztv"
 [functions.send-daily-etymology]
 verify_jwt = false
 
+[functions.generate-etymology-batch]
+verify_jwt = false
+
 [functions.record-etymology-feedback]
 verify_jwt = false
 
