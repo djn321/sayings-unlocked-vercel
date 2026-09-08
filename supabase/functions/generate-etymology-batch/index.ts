@@ -93,7 +93,11 @@ Deno.serve(async (req) => {
 
     console.log(`Feedback context: ${liked.length} liked, ${disliked.length} disliked`);
 
-    const recentForPrompt = allSends?.slice(0, 100).map(e => e.etymology_saying) || [];
+    // Pass the full history, not just a recent slice - with hundreds of
+    // sends accumulated, truncating this let Gemini repeatedly suggest
+    // sayings it had no way of knowing were already used, exhausting the
+    // per-item retry budget on guaranteed-duplicate candidates.
+    const recentForPrompt = allSends?.map(e => e.etymology_saying) || [];
     let generatedCount = 0;
 
     for (let itemIndex = 0; itemIndex < needed; itemIndex++) {
@@ -118,8 +122,8 @@ Deno.serve(async (req) => {
       }
 
       if (!generated) {
-        console.error(`Failed to generate a unique etymology for item ${itemIndex + 1} after ${MAX_ATTEMPTS_PER_ITEM} attempts`);
-        break;
+        console.error(`Failed to generate a unique etymology for item ${itemIndex + 1} after ${MAX_ATTEMPTS_PER_ITEM} attempts - skipping to next item`);
+        continue;
       }
 
       // Insert immediately so a timeout partway through a large catch-up run
