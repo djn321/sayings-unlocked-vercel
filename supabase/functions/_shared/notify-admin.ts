@@ -8,7 +8,7 @@ const ADMIN_EMAIL = 'test@nickdillon.uk';
 export async function sendAdminAlert(subject: string, context: string, details: string): Promise<void> {
   try {
     await resend.emails.send({
-      from: 'Etymology Daily <sayings@padelcourtfinder.uk>',
+      from: 'Etymology Daily <etymology@dev.nickdillon.uk>',
       to: [ADMIN_EMAIL],
       subject,
       html: `

@@ -340,7 +340,7 @@ Deno.serve(async (req) => {
     for (const subscriber of subscribers) {
       try {
         const { error: emailError } = await resend.emails.send({
-          from: 'Etymology Daily <sayings@padelcourtfinder.uk>',
+          from: 'Etymology Daily <etymology@dev.nickdillon.uk>',
           to: [subscriber.email],
           subject: `📚 Today's Etymology: "${etymology.saying}"`,
           html: await createEmailHtml(etymology, subscriber.id),
