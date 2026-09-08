@@ -1,0 +1,25 @@
+name: Top up etymology queue
+
+on:
+  schedule:
+    - cron: '0 6 * * 0' # 06:00 UTC every Sunday
+  workflow_dispatch: {}
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger generate-etymology-batch
+        run: |
+          response=$(curl -sS -w "\n%{http_code}" -X POST \
+            "https://vmsdalzjlkuilzcetztv.supabase.co/functions/v1/generate-etymology-batch" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          echo "$body"
+          if [ "$http_code" -ge 300 ]; then
+            echo "generate-etymology-batch returned HTTP $http_code"
+            exit 1
+          fi
