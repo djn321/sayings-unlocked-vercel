@@ -1,6 +1,6 @@
 // Go-live date for the deterministic queue rotation. Fixed once at rollout -
 // do not change after go-live, or "today's" saying will jump.
-export const ETYMOLOGY_EPOCH_DATE = '2026-09-15';
+export const ETYMOLOGY_EPOCH_DATE = '2026-09-08';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
