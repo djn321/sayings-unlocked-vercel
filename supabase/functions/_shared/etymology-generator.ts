@@ -56,7 +56,7 @@ Return ONLY a valid JSON array of exactly ${count} objects, in this exact format
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: {
       temperature: 1.0,
-      maxOutputTokens: 8192,
+      maxOutputTokens: 32768,
       responseMimeType: 'application/json',
       responseSchema: {
         type: 'array',

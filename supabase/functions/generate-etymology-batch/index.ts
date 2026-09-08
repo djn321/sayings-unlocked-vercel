@@ -24,7 +24,7 @@ const MAX_GENERATE_PER_RUN = 10;
 // there is to avoid duplicating. A handful of batch rounds, each requesting
 // more than currently needed to survive expected duplicate collisions.
 const MAX_BATCH_ROUNDS = 3;
-const MAX_REQUEST_PER_BATCH = 20;
+const MAX_REQUEST_PER_BATCH = 12;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
