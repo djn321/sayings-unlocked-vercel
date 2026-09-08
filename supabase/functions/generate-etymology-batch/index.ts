@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import { verifyServiceOrAdminAuth } from '../_shared/auth.ts';
 import { sendAdminAlert } from '../_shared/notify-admin.ts';
 import { getDayIndex, getRunway } from '../_shared/etymology-queue.ts';
-import { generateEtymology, type Etymology } from '../_shared/etymology-generator.ts';
+import { generateEtymologyBatch } from '../_shared/etymology-generator.ts';
 
 const getCorsOrigin = () => {
   return Deno.env.get('SITE_URL') || 'https://sayings-unlocked.vercel.app';
@@ -15,11 +15,16 @@ const corsHeaders = {
 
 // How many days of pre-generated content to keep ahead of today.
 const TARGET_BUFFER_DAYS = 21;
-const MAX_ATTEMPTS_PER_ITEM = 5;
 // Caps worst-case invocation time if the queue has fallen a long way behind
 // (e.g. several missed weekly runs). The job is target-based and self-heals,
 // so catching up in capped increments across a few runs is fine.
 const MAX_GENERATE_PER_RUN = 10;
+// Requests are batched (many candidates per Gemini call) rather than one
+// call per etymology, to bound round trips regardless of how much history
+// there is to avoid duplicating. A handful of batch rounds, each requesting
+// more than currently needed to survive expected duplicate collisions.
+const MAX_BATCH_ROUNDS = 3;
+const MAX_REQUEST_PER_BATCH = 20;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -99,45 +104,43 @@ Deno.serve(async (req) => {
     // per-item retry budget on guaranteed-duplicate candidates.
     const recentForPrompt = allSends?.map(e => e.etymology_saying) || [];
     let generatedCount = 0;
+    let remaining = needed;
 
-    for (let itemIndex = 0; itemIndex < needed; itemIndex++) {
-      let generated: Etymology | null = null;
+    for (let round = 0; round < MAX_BATCH_ROUNDS && remaining > 0; round++) {
+      // Over-provision to survive expected duplicate collisions in one call.
+      const requestCount = Math.min(remaining * 2, MAX_REQUEST_PER_BATCH);
+      console.log(`Round ${round + 1}/${MAX_BATCH_ROUNDS}: requesting ${requestCount} candidates for ${remaining} remaining slot(s)`);
 
-      for (let attempt = 0; attempt < MAX_ATTEMPTS_PER_ITEM; attempt++) {
-        console.log(`Item ${itemIndex + 1}/${needed}, attempt ${attempt + 1}/${MAX_ATTEMPTS_PER_ITEM}`);
+      const candidates = await generateEtymologyBatch(recentForPrompt, { liked, disliked }, requestCount);
 
-        const candidate = await generateEtymology(recentForPrompt, { liked, disliked });
+      for (const candidate of candidates) {
+        if (remaining <= 0) break;
+
         const candidateNormalised = candidate.saying.toLowerCase().trim();
-
-        if (!usedSayings.has(candidateNormalised)) {
-          generated = candidate;
-          usedSayings.add(candidateNormalised);
-          recentForPrompt.unshift(candidate.saying);
-          console.log(`Generated unique saying: "${candidate.saying}"`);
-          break;
+        if (usedSayings.has(candidateNormalised)) {
+          console.log(`Duplicate detected: "${candidate.saying}" - skipping`);
+          continue;
         }
 
-        console.log(`Duplicate detected: "${candidate.saying}" - retrying...`);
-        recentForPrompt.unshift(candidate.saying);
+        usedSayings.add(candidateNormalised);
+        recentForPrompt.push(candidate.saying);
+
+        // Insert immediately so a timeout partway through a large catch-up run
+        // doesn't lose everything generated so far.
+        const { error: insertError } = await supabase
+          .from('etymology_queue')
+          .insert(candidate);
+
+        if (insertError) {
+          console.error('Error inserting generated etymology:', insertError);
+          throw insertError;
+        }
+
+        generatedCount++;
+        remaining--;
       }
 
-      if (!generated) {
-        console.error(`Failed to generate a unique etymology for item ${itemIndex + 1} after ${MAX_ATTEMPTS_PER_ITEM} attempts - skipping to next item`);
-        continue;
-      }
-
-      // Insert immediately so a timeout partway through a large catch-up run
-      // doesn't lose everything generated so far.
-      const { error: insertError } = await supabase
-        .from('etymology_queue')
-        .insert(generated);
-
-      if (insertError) {
-        console.error('Error inserting generated etymology:', insertError);
-        throw insertError;
-      }
-
-      generatedCount++;
+      console.log(`After round ${round + 1}: generated ${generatedCount}/${needed}, ${remaining} remaining`);
     }
 
     const runwayAfter = runwayBefore + generatedCount;

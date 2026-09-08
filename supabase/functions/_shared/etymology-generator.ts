@@ -10,14 +10,20 @@ export interface FeedbackData {
   disliked: string[];
 }
 
-export async function generateEtymology(
+// Requests `count` etymologies in a single call rather than one-at-a-time -
+// with hundreds of previously-used sayings to avoid, asking for one at a time
+// and rejecting duplicates client-side meant a bad run could need dozens of
+// sequential API calls, risking edge function timeouts. Batching bounds the
+// number of round trips regardless of how much history there is to avoid.
+export async function generateEtymologyBatch(
   recentSayings: string[],
-  feedbackData: FeedbackData
-): Promise<Etymology> {
+  feedbackData: FeedbackData,
+  count: number
+): Promise<Etymology[]> {
   const geminiApiKey = Deno.env.get('GOOGLE_AI_API_KEY');
 
   const recentList = recentSayings.length > 0
-    ? `\n\nDo NOT use any of these recently used sayings: ${recentSayings.join(', ')}`
+    ? `\n\nDo NOT use any of these already-used sayings: ${recentSayings.join(', ')}`
     : '';
 
   const feedbackContext = feedbackData.liked.length > 0 || feedbackData.disliked.length > 0
@@ -26,38 +32,44 @@ ${feedbackData.liked.length > 0 ? `- These sayings were LIKED (generate more lik
 ${feedbackData.disliked.length > 0 ? `- These sayings were DISLIKED (avoid similar ones): ${feedbackData.disliked.join(', ')}` : ''}`
     : '';
 
-  const prompt = `Generate a fascinating etymology for a common English saying or phrase.
+  const prompt = `Generate ${count} fascinating etymologies for common English sayings or phrases.
 
 Requirements:
-- Choose a well-known saying or idiom that people use regularly
-- The origin story should be historically accurate and interesting
-- Include the time period or era when it originated
-- Explain what the saying means in modern usage
+- Choose well-known sayings or idioms that people use regularly
+- Each one must be a different saying - no repeats within your own answer
+- Each origin story should be historically accurate and interesting
+- Include the time period or era when each one originated
+- Explain what each saying means in modern usage
 ${recentList}${feedbackContext}
 
-Return ONLY valid JSON in this exact format (no markdown, no code blocks):
-{
-  "saying": "the exact saying or phrase",
-  "origin": "detailed historical origin story (2-3 sentences)",
-  "meaning": "modern meaning and usage (1-2 sentences)",
-  "era": "time period (e.g., '16th Century', 'Ancient Rome', '1800s')"
-}`;
+Return ONLY a valid JSON array of exactly ${count} objects, in this exact format (no markdown, no code blocks):
+[
+  {
+    "saying": "the exact saying or phrase",
+    "origin": "detailed historical origin story (2-3 sentences)",
+    "meaning": "modern meaning and usage (1-2 sentences)",
+    "era": "time period (e.g., '16th Century', 'Ancient Rome', '1800s')"
+  }
+]`;
 
   const requestBody = {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: {
       temperature: 1.0,
-      maxOutputTokens: 2048,
+      maxOutputTokens: 8192,
       responseMimeType: 'application/json',
       responseSchema: {
-        type: 'object',
-        properties: {
-          saying: { type: 'string' },
-          origin: { type: 'string' },
-          meaning: { type: 'string' },
-          era: { type: 'string' }
-        },
-        required: ['saying', 'origin', 'meaning', 'era']
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            saying: { type: 'string' },
+            origin: { type: 'string' },
+            meaning: { type: 'string' },
+            era: { type: 'string' }
+          },
+          required: ['saying', 'origin', 'meaning', 'era']
+        }
       }
     }
   };
@@ -79,7 +91,7 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
       await new Promise(resolve => setTimeout(resolve, delayMs));
     }
 
-    console.log(`Gemini API attempt ${i + 1}/${attempts.length} using ${model}`);
+    console.log(`Gemini API attempt ${i + 1}/${attempts.length} using ${model} (requesting ${count} etymologies)`);
 
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: 'POST',
@@ -122,9 +134,9 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
 
     const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
-    let etymology: Etymology;
+    let etymologies: Etymology[];
     try {
-      etymology = JSON.parse(cleanContent);
+      etymologies = JSON.parse(cleanContent);
     } catch (parseError) {
       console.error('Failed to parse JSON response from Gemini API');
       console.error('Raw content:', content);
@@ -133,15 +145,20 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
       throw new Error(`Invalid JSON response from AI: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
     }
 
-    if (!etymology.saying || !etymology.origin || !etymology.meaning || !etymology.era) {
-      console.error('Missing required fields in etymology:', etymology);
-      throw new Error('Generated etymology is missing required fields');
+    if (!Array.isArray(etymologies)) {
+      console.error('Expected an array of etymologies, got:', etymologies);
+      throw new Error('Generated response was not an array of etymologies');
     }
 
-    console.log(`Generated etymology (${model}, attempt ${i + 1}):`, etymology.saying);
+    const valid = etymologies.filter(e => e && e.saying && e.origin && e.meaning && e.era);
+    if (valid.length < etymologies.length) {
+      console.log(`Discarding ${etymologies.length - valid.length} malformed etymologies from the batch`);
+    }
 
-    return etymology;
+    console.log(`Generated ${valid.length} etymologies (${model}, attempt ${i + 1})`);
+
+    return valid;
   }
 
-  throw lastError || new Error('Failed to generate etymology after all attempts');
+  throw lastError || new Error('Failed to generate etymologies after all attempts');
 }
