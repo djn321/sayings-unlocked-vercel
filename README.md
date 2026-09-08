@@ -77,7 +77,6 @@ Set these in the Supabase dashboard under Settings > Edge Functions > Secrets:
 
 Only needed by `generate-etymology-batch` (not the daily send function):
 - `GOOGLE_AI_API_KEY` - Google AI API key for Gemini (free tier)
-- `BRAINTRUST_API_KEY` - optional, for LLM call tracing
 
 ## Deployment
 

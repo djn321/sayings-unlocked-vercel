@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import { verifyServiceOrAdminAuth } from '../_shared/auth.ts';
 import { sendAdminAlert } from '../_shared/notify-admin.ts';
 import { getDayIndex, getRunway } from '../_shared/etymology-queue.ts';
-import { generateEtymology, flushLogger, type Etymology } from '../_shared/etymology-generator.ts';
+import { generateEtymology, type Etymology } from '../_shared/etymology-generator.ts';
 
 const getCorsOrigin = () => {
   return Deno.env.get('SITE_URL') || 'https://sayings-unlocked.vercel.app';
@@ -147,8 +147,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    await flushLogger();
-
     return new Response(
       JSON.stringify({
         message: 'Etymology queue top-up complete',
@@ -168,8 +166,6 @@ Deno.serve(async (req) => {
       'generate-etymology-batch threw an exception during execution',
       errorMessage
     );
-
-    await flushLogger();
 
     return new Response(
       JSON.stringify({ error: 'An internal error occurred while generating the etymology batch' }),

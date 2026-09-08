@@ -1,11 +1,3 @@
-import { initLogger } from 'npm:braintrust';
-
-const logger = initLogger({
-  projectName: 'sayings-unlocked',
-  apiKey: Deno.env.get('BRAINTRUST_API_KEY'),
-  asyncFlush: false,
-});
-
 export interface Etymology {
   saying: string;
   origin: string;
@@ -77,94 +69,79 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
     { model: 'gemini-2.5-flash', delayMs: 35000 },
   ];
 
-  return await logger.traced(async (span) => {
-    span.log({
-      input: [{ role: 'user', content: prompt }],
-      metadata: { model: 'gemini-2.5-flash', temperature: 1.0, maxOutputTokens: 2048 },
-    });
+  let lastError: Error | null = null;
 
-    let lastError: Error | null = null;
+  for (let i = 0; i < attempts.length; i++) {
+    const { model, delayMs } = attempts[i];
 
-    for (let i = 0; i < attempts.length; i++) {
-      const { model, delayMs } = attempts[i];
-
-      if (delayMs > 0) {
-        console.log(`Waiting ${delayMs}ms before attempt ${i + 1}/${attempts.length}...`);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-      }
-
-      console.log(`Gemini API attempt ${i + 1}/${attempts.length} using ${model}`);
-
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiApiKey },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        const isRetryable = [500, 502, 503, 429].includes(response.status);
-
-        if (isRetryable && i < attempts.length - 1) {
-          console.log(`Retryable error ${response.status} on ${model}, will retry...`);
-          lastError = new Error(`Google AI API request failed: ${response.status} - ${errorText}`);
-          continue;
-        }
-        throw new Error(`Google AI API request failed: ${response.status} - ${errorText}`);
-      }
-
-      const data = await response.json();
-      const finishReason = data.candidates[0].finishReason;
-      console.log(`Gemini API finish reason (${model}):`, finishReason);
-
-      if (finishReason === 'MAX_TOKENS' || finishReason === 'RECITATION') {
-        if (i < attempts.length - 1) {
-          console.log(`Retrying after ${finishReason} on ${model}...`);
-          lastError = new Error(`Gemini API response truncated (${finishReason})`);
-          continue;
-        }
-        throw new Error(`Gemini API response truncated (${finishReason}) after all attempts`);
-      }
-
-      if (!data.candidates[0].content?.parts?.[0]?.text) {
-        console.error('No content in Gemini response:', JSON.stringify(data, null, 2));
-        throw new Error('Gemini API returned no content');
-      }
-
-      const content = data.candidates[0].content.parts[0].text;
-      console.log('Gemini response length:', content.length, 'characters');
-
-      const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-
-      let etymology: Etymology;
-      try {
-        etymology = JSON.parse(cleanContent);
-      } catch (parseError) {
-        console.error('Failed to parse JSON response from Gemini API');
-        console.error('Raw content:', content);
-        console.error('Cleaned content:', cleanContent);
-        console.error('Parse error:', parseError);
-        throw new Error(`Invalid JSON response from AI: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
-      }
-
-      if (!etymology.saying || !etymology.origin || !etymology.meaning || !etymology.era) {
-        console.error('Missing required fields in etymology:', etymology);
-        throw new Error('Generated etymology is missing required fields');
-      }
-
-      console.log('Generated etymology:', etymology.saying);
-      span.log({
-        output: etymology,
-        metadata: { model, finishReason, responseLength: content.length, attemptIndex: i },
-      });
-
-      return etymology;
+    if (delayMs > 0) {
+      console.log(`Waiting ${delayMs}ms before attempt ${i + 1}/${attempts.length}...`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
     }
 
-    throw lastError || new Error('Failed to generate etymology after all attempts');
-  }, { name: 'generate-etymology', spanAttributes: { type: 'llm' } });
-}
+    console.log(`Gemini API attempt ${i + 1}/${attempts.length} using ${model}`);
 
-export async function flushLogger(): Promise<void> {
-  await logger.flush();
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiApiKey },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      const isRetryable = [500, 502, 503, 429].includes(response.status);
+
+      if (isRetryable && i < attempts.length - 1) {
+        console.log(`Retryable error ${response.status} on ${model}, will retry...`);
+        lastError = new Error(`Google AI API request failed: ${response.status} - ${errorText}`);
+        continue;
+      }
+      throw new Error(`Google AI API request failed: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    const finishReason = data.candidates[0].finishReason;
+    console.log(`Gemini API finish reason (${model}):`, finishReason);
+
+    if (finishReason === 'MAX_TOKENS' || finishReason === 'RECITATION') {
+      if (i < attempts.length - 1) {
+        console.log(`Retrying after ${finishReason} on ${model}...`);
+        lastError = new Error(`Gemini API response truncated (${finishReason})`);
+        continue;
+      }
+      throw new Error(`Gemini API response truncated (${finishReason}) after all attempts`);
+    }
+
+    if (!data.candidates[0].content?.parts?.[0]?.text) {
+      console.error('No content in Gemini response:', JSON.stringify(data, null, 2));
+      throw new Error('Gemini API returned no content');
+    }
+
+    const content = data.candidates[0].content.parts[0].text;
+    console.log('Gemini response length:', content.length, 'characters');
+
+    const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+
+    let etymology: Etymology;
+    try {
+      etymology = JSON.parse(cleanContent);
+    } catch (parseError) {
+      console.error('Failed to parse JSON response from Gemini API');
+      console.error('Raw content:', content);
+      console.error('Cleaned content:', cleanContent);
+      console.error('Parse error:', parseError);
+      throw new Error(`Invalid JSON response from AI: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+    }
+
+    if (!etymology.saying || !etymology.origin || !etymology.meaning || !etymology.era) {
+      console.error('Missing required fields in etymology:', etymology);
+      throw new Error('Generated etymology is missing required fields');
+    }
+
+    console.log(`Generated etymology (${model}, attempt ${i + 1}):`, etymology.saying);
+
+    return etymology;
+  }
+
+  throw lastError || new Error('Failed to generate etymology after all attempts');
 }
