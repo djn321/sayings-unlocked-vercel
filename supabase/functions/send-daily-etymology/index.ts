@@ -238,6 +238,7 @@ async function createEmailHtml(etymology: Etymology, subscriberId: string): Prom
           <div class="footer">
             <p>Etymology Daily - Bringing the stories of language to life</p>
             <p>You're receiving this because you subscribed to our daily etymology emails.</p>
+            <p>Got this forwarded to you? <a href="${getCorsOrigin()}" class="unsubscribe">Subscribe to get your own daily etymology</a></p>
             <p><a href="${unsubscribe}" class="unsubscribe">Unsubscribe from daily etymologies</a></p>
           </div>
         </div>
