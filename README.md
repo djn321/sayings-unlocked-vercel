@@ -182,15 +182,14 @@ supabase/
 
 Generation and sending are decoupled, so a Gemini outage on any given day can't take down that day's email:
 
-- **`generate-etymology-batch`** runs weekly and tops up `etymology_queue` with enough pre-generated etymologies to keep a 21-day buffer ahead of today. It's the only function that calls Gemini.
+- **`generate-etymology-batch`** tops up `etymology_queue` with enough pre-generated etymologies to keep a 21-day buffer ahead of today. It's the only function that calls Gemini. In practice, the queue is mostly kept stocked via a large offline batch (generated with Claude, run every ~6 months or so) rather than this function's own weekly cron - Gemini's free tier is too rate-limited (20 requests/day on `gemini-2.5-flash`) to rely on for automated generation. The function and its weekly GitHub Actions trigger (`0 6 * * 0`) still exist as a fallback.
 - **`send-daily-etymology`** runs daily and deterministically picks "today's" row from `etymology_queue` by date (no Gemini call, nothing that can be "overloaded" at send time) and emails it to all active subscribers.
 
-Both are triggered by GitHub Actions cron (`.github/workflows/send-daily-etymology.yml` and `.github/workflows/generate-etymology-batch.yml`), not Supabase's `pg_cron` - this avoids the recurring cron-auth/secret-storage setup pain of pg_cron.
+**Triggers**: `send-daily-etymology` is triggered by Supabase's `pg_cron` (`5 8 * * *`, 08:05 UTC) - GitHub Actions' own scheduled trigger was tried first, but proved unreliable in practice (fired ~4.5 hours late, consistently, on every day tested). `generate-etymology-batch` is still triggered by a GitHub Actions cron, since its timing genuinely doesn't matter - a delayed top-up run has no user-facing effect. Both functions also support `workflow_dispatch` for manual triggering from the Actions tab.
 
 ### Setting up the GitHub Actions cron
 
-1. Add a repo secret `SUPABASE_CRON_SECRET` (Settings → Secrets and variables → Actions) with the same value as the `SERVICE_ROLE_KEY_ACTUAL` edge function secret.
-2. The workflows run automatically on their schedules (`5 8 * * *` daily, `0 6 * * 0` weekly). You can also trigger either manually from the Actions tab (`workflow_dispatch`).
+1. Add a repo secret `SUPABASE_CRON_SECRET` (Settings → Secrets and variables → Actions) with the same value as the `SERVICE_ROLE_KEY_ACTUAL` edge function secret - needed for `generate-etymology-batch`'s weekly cron and for manually triggering either function via `workflow_dispatch`.
 
 ### Manual Trigger
 
