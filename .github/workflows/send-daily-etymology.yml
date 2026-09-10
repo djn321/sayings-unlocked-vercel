@@ -1,8 +1,10 @@
 name: Send daily etymology email
 
 on:
-  schedule:
-    - cron: '5 8 * * *' # 08:05 UTC daily
+  # Scheduling moved back to Supabase pg_cron (see the
+  # restore_pg_cron_for_daily_send migration) - GitHub Actions' own
+  # scheduled trigger proved unreliable, firing ~4.5 hours late on three
+  # consecutive days. Kept here for manual/emergency triggering only.
   workflow_dispatch: {}
 
 jobs:
