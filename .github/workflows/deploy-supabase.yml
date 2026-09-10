@@ -30,6 +30,7 @@ jobs:
         - name: Deploy edge functions
           run: |
             supabase functions deploy send-daily-etymology
+            supabase functions deploy generate-etymology-batch
             supabase functions deploy record-etymology-feedback
             supabase functions deploy send-confirmation-email
             supabase functions deploy confirm-subscription

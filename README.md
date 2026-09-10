@@ -2,6 +2,8 @@
 
 Daily etymology lessons exploring the fascinating origins of common sayings and phrases. Users subscribe via email to receive AI-generated etymologies with historical context.
 
+Etymologies are generated in bulk ahead of time and stored in a queue, rather than being generated on demand each day - see [Content Generation & Sending](#content-generation--sending) below.
+
 ## Tech Stack
 
 - **Frontend**: React + Vite + TypeScript
@@ -68,9 +70,13 @@ The app will be available at `http://localhost:8080`.
 Set these in the Supabase dashboard under Settings > Edge Functions > Secrets:
 
 - `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (for database operations)
-- `GOOGLE_AI_API_KEY` - Google AI API key for Gemini (free tier)
 - `RESEND_API_KEY` - Resend API key for sending emails
 - `SUPABASE_URL` - Your Supabase project URL (for feedback links)
+- `SERVICE_ROLE_KEY_ACTUAL` - shared secret used by the GitHub Actions cron workflows to authenticate (see [Content Generation & Sending](#content-generation--sending))
+- `FEEDBACK_TOKEN_SECRET` - for signing per-subscriber feedback/unsubscribe links
+
+Only needed by `generate-etymology-batch` (not the daily send function):
+- `GOOGLE_AI_API_KEY` - Google AI API key for Gemini (free tier)
 
 ## Deployment
 
@@ -107,6 +113,7 @@ supabase link --project-ref your-project-id
 
 # Deploy functions
 supabase functions deploy send-daily-etymology
+supabase functions deploy generate-etymology-batch
 supabase functions deploy record-etymology-feedback
 supabase functions deploy send-confirmation-email
 supabase functions deploy confirm-subscription
@@ -114,6 +121,8 @@ supabase functions deploy confirm-subscription
 # Set environment variables in Supabase dashboard
 # Settings > Edge Functions > Secrets
 ```
+
+In CI, this happens automatically via `.github/workflows/deploy-supabase.yml` on push to `main`.
 
 ## API Keys Setup
 
@@ -135,6 +144,7 @@ supabase functions deploy confirm-subscription
 
 The Supabase database includes:
 - `subscribers` - Email subscribers and their status
+- `etymology_queue` - Pre-generated etymologies, append-only, consumed deterministically by date (see below)
 - `etymology_sends` - History of sent etymologies
 - `etymology_feedback` - User feedback (likes/dislikes)
 
@@ -168,62 +178,37 @@ supabase/
 └── migrations/     # Database migrations
 ```
 
-## Scheduled Email Sending
+## Content Generation & Sending
 
-The cron job for sending daily etymology emails is automatically configured during database migrations. However, you need to verify the setup:
+Generation and sending are decoupled, so a Gemini outage on any given day can't take down that day's email:
 
-### Verifying the Cron Job
+- **`generate-etymology-batch`** runs weekly and tops up `etymology_queue` with enough pre-generated etymologies to keep a 21-day buffer ahead of today. It's the only function that calls Gemini.
+- **`send-daily-etymology`** runs daily and deterministically picks "today's" row from `etymology_queue` by date (no Gemini call, nothing that can be "overloaded" at send time) and emails it to all active subscribers.
 
-1. The migration `20251214000001_remove_cron_secrets_table.sql` creates a cron job that runs at 8:00 AM UTC daily
-2. The cron job is configured to use the service role key from database settings
+Both are triggered by GitHub Actions cron (`.github/workflows/send-daily-etymology.yml` and `.github/workflows/generate-etymology-batch.yml`), not Supabase's `pg_cron` - this avoids the recurring cron-auth/secret-storage setup pain of pg_cron.
 
-### Checking Cron Job Status
+### Setting up the GitHub Actions cron
 
-Use the verification script to check if the cron job is properly configured:
-
-```bash
-# View the verification script
-cat scripts/verify-cron-job.sql
-
-# Run it via Supabase dashboard SQL editor or CLI
-```
-
-### Important Configuration Notes
-
-The cron job requires the following to be set up:
-
-1. **Supabase Secrets** (set via `supabase secrets set`):
-   - `SUPABASE_SERVICE_ROLE_KEY` - For database access
-   - `SUPABASE_URL` - Your Supabase project URL
-   - `GOOGLE_AI_API_KEY` - For AI-generated etymologies
-   - `RESEND_API_KEY` - For sending emails
-   - `SITE_URL` - Your frontend URL (e.g., https://sayings-unlocked.vercel.app)
-   - `FEEDBACK_TOKEN_SECRET` - For signing feedback tokens
-
-2. **Database Setting** (required for cron job authentication):
-   - The cron job uses `current_setting('app.settings.service_role_key', true)` to authenticate
-   - This setting must be configured in the database for the cron job to work
-   - See `scripts/verify-cron-job.sql` for setup instructions
+1. Add a repo secret `SUPABASE_CRON_SECRET` (Settings → Secrets and variables → Actions) with the same value as the `SERVICE_ROLE_KEY_ACTUAL` edge function secret.
+2. The workflows run automatically on their schedules (`5 8 * * *` daily, `0 6 * * 0` weekly). You can also trigger either manually from the Actions tab (`workflow_dispatch`).
 
 ### Manual Trigger
 
-To manually test the email sending function:
+To manually test either function:
 
 ```bash
 curl -X POST "https://vmsdalzjlkuilzcetztv.supabase.co/functions/v1/send-daily-etymology" \
   -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
   -H "Content-Type: application/json" \
   -d '{}'
+
+curl -X POST "https://vmsdalzjlkuilzcetztv.supabase.co/functions/v1/generate-etymology-batch" \
+  -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{}'
 ```
 
-Note: This will send emails to all active subscribers!
-
-### Alternative: External Cron Services
-
-If you prefer not to use Supabase's built-in cron:
-- GitHub Actions (free)
-- EasyCron
-- cron-job.org
+Note: `send-daily-etymology` will send emails to all active subscribers! It's safe to re-trigger on the same day though - it always resolves to the same pre-generated saying, so subscribers won't get sent two different emails.
 
 ## Cost Estimates
 
