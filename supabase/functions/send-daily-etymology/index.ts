@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import { Resend } from 'npm:resend@4.0.0';
 import { verifyServiceOrAdminAuth } from '../_shared/auth.ts';
 import { sendAdminAlert } from '../_shared/notify-admin.ts';
+import { getErrorMessage } from '../_shared/error-utils.ts';
 import { getDayIndex } from '../_shared/etymology-queue.ts';
 import type { Etymology } from '../_shared/etymology-generator.ts';
 
@@ -402,7 +403,7 @@ Deno.serve(async (req) => {
     console.error('Error in send-daily-etymology function:', error);
 
     // Send failure notification to admin
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = getErrorMessage(error);
     await sendAdminAlert(
       '⚠️ Etymology Daily - Send Failed',
       'Function threw an exception during execution',
