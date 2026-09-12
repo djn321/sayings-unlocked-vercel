@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import { verifyServiceOrAdminAuth } from '../_shared/auth.ts';
 import { sendAdminAlert } from '../_shared/notify-admin.ts';
+import { getErrorMessage } from '../_shared/error-utils.ts';
 import { getDayIndex, getRunway } from '../_shared/etymology-queue.ts';
 import { generateEtymologyBatch } from '../_shared/etymology-generator.ts';
 
@@ -167,7 +168,7 @@ Deno.serve(async (req) => {
   } catch (error: unknown) {
     console.error('Error in generate-etymology-batch function:', error);
 
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = getErrorMessage(error);
     await sendAdminAlert(
       '⚠️ Etymology Daily - Batch Generation Failed',
       'generate-etymology-batch threw an exception during execution',
