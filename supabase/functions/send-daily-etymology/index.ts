@@ -3,6 +3,7 @@ import { Resend } from 'npm:resend@4.0.0';
 import { verifyServiceOrAdminAuth } from '../_shared/auth.ts';
 import { sendAdminAlert } from '../_shared/notify-admin.ts';
 import { getErrorMessage } from '../_shared/error-utils.ts';
+import { withRetry } from '../_shared/retry.ts';
 import { getDayIndex } from '../_shared/etymology-queue.ts';
 import type { Etymology } from '../_shared/etymology-generator.ts';
 
@@ -270,11 +271,12 @@ Deno.serve(async (req) => {
     // Use service role key for actual operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get all active subscribers
-    const { data: subscribers, error: fetchError } = await supabase
-      .from('subscribers')
-      .select('id, email')
-      .eq('is_active', true);
+    // Get all active subscribers. Retried - a gateway timeout on this exact,
+    // first-query-of-the-day has hit twice, always resolving instantly on a
+    // later retry, consistent with a cold connection pool at a quiet hour.
+    const { data: subscribers, error: fetchError } = await withRetry(() =>
+      supabase.from('subscribers').select('id, email').eq('is_active', true)
+    );
 
     if (fetchError) {
       console.error('Error fetching subscribers:', fetchError);
@@ -295,11 +297,13 @@ Deno.serve(async (req) => {
     // No mutation - re-running this on the same day always resolves to the
     // same row, so a manual re-trigger can never send two different sayings.
     const dayIndex = getDayIndex(new Date());
-    const { data: queueRow, error: queueError } = await supabase
-      .from('etymology_queue')
-      .select('saying, origin, meaning, era')
-      .eq('sequence_number', dayIndex)
-      .maybeSingle();
+    const { data: queueRow, error: queueError } = await withRetry(() =>
+      supabase
+        .from('etymology_queue')
+        .select('saying, origin, meaning, era')
+        .eq('sequence_number', dayIndex)
+        .maybeSingle()
+    );
 
     if (queueError) {
       console.error('Error fetching etymology_queue row:', queueError);
