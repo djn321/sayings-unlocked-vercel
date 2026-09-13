@@ -43,7 +43,7 @@ Project folder: `Software Projects/sayings-unlocked-vercel` in Nick's Obsidian v
 
 ## Known Issues
 
-- **Occasional "Send Failed" alert: `Error fetching subscribers: { message: "Gateway Timeout" }`** - a transient Supabase gateway timeout on the subscribers query, not a code bug. Seen once (2026-09-12). If it recurs, just manually re-trigger `send-daily-etymology` (`workflow_dispatch` from the Actions tab, or curl - see README's Content Generation & Sending section) - it's safe to re-run same-day since the queue read is deterministic. Full write-up: `Technical/Gateway Timeout on Subscriber Fetch.md` in the Obsidian project folder. Worth adding a retry wrapper around the subscriber fetch if this starts happening regularly.
+- **"Send Failed" alert: `Gateway Timeout`** - hit on 2 consecutive days (2026-09-12, 2026-09-13), same query (subscriber fetch), ~5s after boot each time. Likely a cold connection pool at a quiet hour. `withRetry()` (3 attempts, 2s delay) added around the subscriber fetch and queue read - PR #9. If it still slips through, manually re-trigger `send-daily-etymology` (`workflow_dispatch` from the Actions tab, or curl - see README's Content Generation & Sending section); safe to re-run same-day since the queue read is deterministic. Full write-up: `Technical/Gateway Timeout on Subscriber Fetch.md` in the Obsidian project folder.
 
 ## Notes
 
